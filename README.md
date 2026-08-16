@@ -19,16 +19,16 @@ Also see `cmd/txqr-tester` app for automated testing of different encoder parame
 
 ## Windows text → phone clipboard
 
-Use `cmd/txqr-send` as a background app:
+Use `cmd/txqr-send` as a background app with a tray icon:
 
 1. Copy text on Windows  
-2. Press **Ctrl+Shift+Q** (configurable)  
+2. **Click the tray icon** or press **Ctrl+Shift+Q**  
 3. A popup shows a static or animated QR stream  
 4. Your mobile TXQR reader decodes and copies the text  
 
 ```bash
 go run ./cmd/txqr-send
-# Windows GUI build:
+# Windows GUI build (no console window):
 go build -ldflags="-H windowsgui" -o txqr-send.exe ./cmd/txqr-send
 ```
 

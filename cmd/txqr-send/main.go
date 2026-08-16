@@ -1,5 +1,5 @@
 // Command txqr-send runs in the background on Windows: copy text, press a
-// global hotkey, and a popup window shows the TXQR stream for your phone.
+// global hotkey or click the tray icon, and a popup shows the TXQR stream.
 package main
 
 import (
@@ -27,7 +27,8 @@ func main() {
 	fps := flag.Int("fps", defaults.FPS, "Override animation FPS")
 	size := flag.Int("size", defaults.QRSize, "QR image size in pixels")
 	redundancy := flag.Float64("redundancy", defaults.Redundancy, "Fountain-code redundancy factor")
-	background := flag.Bool("background", true, "Stay resident and listen for the hotkey")
+	background := flag.Bool("background", true, "Stay resident with tray icon and hotkey")
+	tray := flag.Bool("tray", true, "Show a system tray / notification-area icon")
 	text := flag.String("text", "", "Encode this text once and show popup (then exit unless -background)")
 	noBrowser := flag.Bool("n", false, "Do not open a browser automatically")
 	flag.Parse()
@@ -40,7 +41,7 @@ func main() {
 	}
 
 	if err := initClipboard(); err != nil {
-		log.Printf("clipboard init: %v (hotkey clipboard reads may fail)", err)
+		log.Printf("clipboard init: %v (clipboard reads may fail)", err)
 	}
 
 	srv := &SenderServer{
@@ -86,10 +87,9 @@ func main() {
 		if err := srv.showClipboard(); err != nil {
 			log.Printf("clipboard transfer: %v", err)
 		} else {
-			s := srv
-			s.mu.RLock()
-			tr := s.latest
-			s.mu.RUnlock()
+			srv.mu.RLock()
+			tr := srv.latest
+			srv.mu.RUnlock()
 			if tr != nil && tr.Error == "" {
 				log.Printf("showing QR: %d bytes, %d frames @ %d fps", tr.Bytes, tr.FrameCount, tr.FPS)
 			}
@@ -116,13 +116,28 @@ func main() {
 	}
 
 	log.Printf("TXQR sender running at %s", baseURL)
-	log.Printf("Workflow: copy text → press %s → point phone at the popup QR", *hotkeySpec)
+	log.Printf("Workflow: copy text → click tray icon or press %s → scan with phone", *hotkeySpec)
 	log.Printf("Defaults: chunk=%d fps=%d size=%d redundancy=%.2f (auto-tuned per paste size)",
 		profile.ChunkLen, profile.FPS, profile.QRSize, profile.Redundancy)
 
 	if *background {
-		runHotkeyLoop(*hotkeySpec, triggerFromClipboard)
-		// If hotkey registration failed, keep serving until killed.
+		go runHotkeyLoop(*hotkeySpec, triggerFromClipboard)
+
+		if *tray {
+			runTray(&trayApp{
+				hotkey:  *hotkeySpec,
+				baseURL: baseURL,
+				onShowQR: func() {
+					triggerFromClipboard()
+				},
+				onOpenUI: func() {
+					_ = openBrowser(baseURL + "/")
+				},
+			})
+			return
+		}
+
+		// No tray: hotkey-only resident mode.
 		select {}
 	}
 
@@ -145,7 +160,6 @@ func openBrowser(url string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		// Open a new window-ish via default handler; users can pin/fullscreen.
 		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
 	case "darwin":
 		cmd = exec.Command("open", url)

@@ -3,6 +3,7 @@ module github.com/divan/txqr
 go 1.22.2
 
 require (
+	fyne.io/systray v1.12.2
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/google/gofountain v0.0.0-20160820054803-4928733085e9
 	github.com/gopherjs/gopherjs v0.0.0-20181103185306-d547d1d9531e
@@ -18,10 +19,11 @@ require (
 )
 
 require (
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	golang.org/x/exp v0.0.0-20190731235908-ec7cb31e5a56 // indirect
 	golang.org/x/image v0.6.0 // indirect
 	golang.org/x/mobile v0.0.0-20230301163155-e0f57694e12c // indirect
-	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/text v0.8.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )

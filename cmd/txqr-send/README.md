@@ -4,14 +4,22 @@ Background Windows sender for clipboard → animated QR → phone reader.
 
 ## Workflow
 
-1. Start once and leave it running:
+1. Start once and leave it running (tray icon appears in the notification area):
    ```bash
    go run ./cmd/txqr-send
    ```
 2. Select text anywhere and copy it (`Ctrl+C`).
-3. Press **`Ctrl+Shift+Q`** (configurable).
+3. Either:
+   - **Click the tray icon**, or  
+   - Press **`Ctrl+Shift+Q`** (configurable), or  
+   - Right-click tray → **Show QR from clipboard**
 4. A popup window shows a static QR (short text) or a looping animated TXQR stream.
 5. Point your mobile TXQR reader at the window; when decode completes, copy the text on the phone.
+
+### Tray menu
+- **Show QR from clipboard** — same as clicking the icon  
+- **Open settings…** — manual paste / parameter overrides  
+- **Quit TXQR Send** — stop the background app  
 
 ## Optimal defaults (clipboard use case)
 
@@ -36,7 +44,8 @@ txqr-send -split 0 -fps 6 -size 560
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `-hotkey` | `Ctrl+Shift+Q` | Global shortcut |
-| `-background` | `true` | Stay resident for hotkey |
+| `-tray` | `true` | Show notification-area / tray icon |
+| `-background` | `true` | Stay resident for tray + hotkey |
 | `-addr` | `127.0.0.1:1988` | Local UI |
 | `-split` | `140` | Chunk override (`0` in API = auto) |
 | `-fps` | `6` | Animation FPS |
