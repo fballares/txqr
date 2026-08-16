@@ -52,7 +52,7 @@ You do **not** need to catch the beginning of the animation.
 
 ## Multi-QR concurrent streams
 
-Windows **auto-selects** 1 vs 2 QR codes so dual only appears when it should finish faster (larger payloads / longer loops). The iPhone reader dynamically accepts whatever it sees.
+Windows **auto-selects** 1 vs 2 QR codes so dual only appears when it should finish faster (larger payloads / longer loops). Dual layout is always **LEFT | RIGHT**; the iPhone sorts Vision hits left→right and merges both.
 
 - Wire format unchanged
 - Override: `-streams 1` or `-streams 2`

@@ -2,16 +2,22 @@ import SwiftUI
 import AVFoundation
 import Vision
 
-/// Live camera preview that runs Vision QR detection and forwards *all*
-/// QR payloads in each frame to `TransferSession` for concurrent multi-QR ingest.
+/// One QR payload with its horizontal position in the upright image (0…1).
+struct PositionedQR: Equatable {
+    let payload: String
+    /// Normalized mid-X after Vision orientation correction (0 = left, 1 = right).
+    let midX: CGFloat
+}
+
+/// Live camera preview: Vision multi-QR detect, sorted LEFT → RIGHT for dual slots.
 struct MultiQRScannerView: UIViewControllerRepresentable {
     @ObservedObject var session: TransferSession
 
     func makeUIViewController(context: Context) -> MultiQRScannerController {
         let controller = MultiQRScannerController()
-        controller.onCodes = { codes in
+        controller.onCodes = { positioned in
             Task { @MainActor in
-                session.ingest(codes: codes)
+                session.ingest(positioned: positioned)
             }
         }
         return controller
@@ -21,14 +27,14 @@ struct MultiQRScannerView: UIViewControllerRepresentable {
 }
 
 final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate {
-    var onCodes: (([String]) -> Void)?
+    var onCodes: (([PositionedQR]) -> Void)?
 
     private let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let visionQueue = DispatchQueue(label: "txqr.vision", qos: .userInitiated)
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var lastEmit = Date.distantPast
-    private let minInterval: TimeInterval = 1.0 / 12.0 // cap Vision work ~12 Hz
+    private let minInterval: TimeInterval = 1.0 / 12.0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -69,7 +75,6 @@ final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutput
         }
         session.addInput(input)
 
-        // Prefer continuous autofocus for screen-to-camera QR.
         try? device.lockForConfiguration()
         if device.isFocusModeSupported(.continuousAutoFocus) {
             device.focusMode = .continuousAutoFocus
@@ -109,21 +114,31 @@ final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutput
 
         let request = VNDetectBarcodesRequest { [weak self] req, error in
             guard error == nil, let results = req.results as? [VNBarcodeObservation] else { return }
-            let payloads = results.compactMap { obs -> String? in
-                guard obs.symbology == .qr, let payload = obs.payloadStringValue, !payload.isEmpty else {
-                    return nil
-                }
-                return payload
+
+            // Keep position so we can map to Windows LEFT / RIGHT slots.
+            var positioned: [PositionedQR] = []
+            positioned.reserveCapacity(results.count)
+            var seenPayload = Set<String>()
+            for obs in results where obs.symbology == .qr {
+                guard let payload = obs.payloadStringValue, !payload.isEmpty else { continue }
+                if seenPayload.contains(payload) { continue }
+                seenPayload.insert(payload)
+                let midX = obs.boundingBox.midX
+                positioned.append(PositionedQR(payload: payload, midX: midX))
             }
-            guard !payloads.isEmpty else { return }
-            // Dedupe identical payloads within the same frame.
-            let unique = Array(Set(payloads))
+            guard !positioned.isEmpty else { return }
+
+            // LEFT → RIGHT (stream 0, stream 1 on the Windows overlay).
+            positioned.sort { $0.midX < $1.midX }
+
             DispatchQueue.main.async {
-                self?.onCodes?(unique)
+                self?.onCodes?(positioned)
             }
         }
         request.symbologies = [.qr]
 
+        // .right matches typical portrait back-camera buffers so midX is left→right
+        // in the upright framed image the user sees.
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
         try? handler.perform([request])
     }

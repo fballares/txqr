@@ -59,8 +59,9 @@ cd ios/TXQRReader && xcodegen generate && open TXQRReader.xcodeproj
 ## Usage with Windows sender
 
 ```bash
-# on Windows
-txqr-send.exe -streams 2
+# on Windows — auto picks 1 vs 2 QR for speed
+txqr-send.exe
+txqr-send.exe -streams 2   # force dual
 ```
 
 Copy text → tray click / hotkey → overlay shows **two looping QRs** → iPhone reads both.

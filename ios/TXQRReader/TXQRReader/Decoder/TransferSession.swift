@@ -6,13 +6,14 @@ import Txqr
 #endif
 
 /// Owns the TXQR fountain decoder and exposes UI-friendly progress.
-/// Dynamically accepts 1 or many QR payloads per camera frame — no fixed stream count.
+/// Dual mode: Windows shows LEFT + RIGHT slots; we sort Vision hits the same way
+/// and ingest both payloads into one fountain decoder each camera tick.
 @MainActor
 final class TransferSession: ObservableObject {
     enum DetectedLayout: String {
         case idle = "Waiting"
         case single = "Single QR"
-        case dual = "Dual QR"
+        case dual = "LEFT + RIGHT"
         case multi = "Multi QR"
     }
 
@@ -23,6 +24,8 @@ final class TransferSession: ObservableObject {
     @Published var lastCodesInFrame: Int = 0
     @Published var peakConcurrent: Int = 0
     @Published var detectedLayout: DetectedLayout = .idle
+    @Published var leftActive: Bool = false
+    @Published var rightActive: Bool = false
     @Published var preview: String = ""
 
     private var acceptedTotal: Int = 0
@@ -32,21 +35,35 @@ final class TransferSession: ObservableObject {
 #endif
 
     func start() {
-        statusText = "Scanning — auto-detects 1 or 2 QR codes"
+        statusText = "Scanning — LEFT/RIGHT dual or single auto"
     }
 
     func stop() {}
 
-    /// Called with every QR payload Vision found in one camera frame.
-    func ingest(codes: [String]) {
-        lastCodesInFrame = codes.count
-        if codes.count > peakConcurrent {
-            peakConcurrent = codes.count
+    /// Positioned QR payloads already sorted LEFT → RIGHT by the scanner.
+    func ingest(positioned: [PositionedQR]) {
+        lastCodesInFrame = positioned.count
+        if positioned.count > peakConcurrent {
+            peakConcurrent = positioned.count
         }
-        updateLayout(codes.count)
 
-        guard !isComplete, !codes.isEmpty else { return }
+        // Map to Windows LEFT / RIGHT halves when we see two codes.
+        if positioned.count >= 2 {
+            leftActive = true
+            rightActive = true
+            detectedLayout = positioned.count == 2 ? .dual : .multi
+        } else if positioned.count == 1 {
+            let x = positioned[0].midX
+            leftActive = x < 0.55
+            rightActive = x >= 0.45
+            if detectedLayout != .dual && detectedLayout != .multi {
+                detectedLayout = .single
+            }
+        }
 
+        guard !isComplete, !positioned.isEmpty else { return }
+
+        let codes = positioned.map(\.payload)
         let joined = codes.joined(separator: "\n")
 
 #if canImport(Txqr)
@@ -55,12 +72,16 @@ final class TransferSession: ObservableObject {
             acceptedTotal += accepted
             progress = Int(decoder.progress())
             let unique = Int(decoder.uniqueFrames())
-            let layout = detectedLayout.rawValue
-            statusText = "\(layout) · \(unique) unique frames · +\(accepted) this tick"
+            if positioned.count >= 2 {
+                statusText = "LEFT+RIGHT locked · \(unique) unique · +\(accepted)"
+            } else {
+                let side = positioned[0].midX < 0.5 ? "LEFT" : "RIGHT"
+                statusText = "\(side) QR · \(unique) unique · +\(accepted)"
+            }
             if decoder.isCompleted() {
                 finish(text: decoder.data())
             }
-        } else if codes.count > 0 {
+        } else if !codes.isEmpty {
             statusText = "Saw \(codes.count) QR — waiting for TXQR frames"
         }
 #else
@@ -69,29 +90,12 @@ final class TransferSession: ObservableObject {
 #endif
     }
 
-    private func updateLayout(_ count: Int) {
-        switch count {
-        case 0:
-            break
-        case 1:
-            // Don't downgrade from dual if we already locked onto two —
-            // brief misses of one code are common while panning.
-            if detectedLayout != .dual && detectedLayout != .multi {
-                detectedLayout = .single
-            }
-        case 2:
-            detectedLayout = .dual
-        default:
-            detectedLayout = .multi
-        }
-    }
-
     private func finish(text: String) {
         isComplete = true
         progress = 100
         recoveredText = text
         preview = text.count > 400 ? String(text.prefix(400)) + "…" : text
-        let mode = peakConcurrent >= 2 ? "dual/multi peak \(peakConcurrent)" : "single"
+        let mode = peakConcurrent >= 2 ? "LEFT+RIGHT peak \(peakConcurrent)" : "single"
         statusText = "Complete · \(text.count) bytes · \(mode)"
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
@@ -113,6 +117,8 @@ final class TransferSession: ObservableObject {
         lastCodesInFrame = 0
         peakConcurrent = 0
         detectedLayout = .idle
-        statusText = "Scanning — auto-detects 1 or 2 QR codes"
+        leftActive = false
+        rightActive = false
+        statusText = "Scanning — LEFT/RIGHT dual or single auto"
     }
 }

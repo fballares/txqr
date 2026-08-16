@@ -176,7 +176,22 @@ const popupHTML = `<!DOCTYPE html>
       background: #fff;
     }
     .stage.multi {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr 1fr;
+      column-gap: 12px;
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .slot {
+      display: grid;
+      gap: 4px;
+      justify-items: center;
+    }
+    .slot label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: #444;
+      text-transform: uppercase;
     }
     .stage img {
       width: min(280px, 42vw);
@@ -210,8 +225,9 @@ const popupHTML = `<!DOCTYPE html>
 </head>
 <body>
   <div class="banner">
-    <strong>Looping continuously</strong> — multi-QR when needed.
-    iPhone can read both at once. Drag this window to your phone stand.
+    <strong>Looping continuously</strong> —
+    dual mode uses <strong>LEFT</strong> + <strong>RIGHT</strong> QR slots; iPhone reads both sides.
+    Drag this window to your phone stand.
   </div>
   <div class="stage" id="stage">
     <div class="err" id="status">Preparing QR stream…</div>
@@ -253,7 +269,7 @@ const popupHTML = `<!DOCTYPE html>
       }
       tickN += 1;
       if (frames.length && tickN %% frames.length === 0) loops += 1;
-      const mode = streams > 1 ? (streams + ' concurrent QRs') : 'single QR';
+      const mode = streams > 1 ? 'LEFT+RIGHT QRs' : 'single QR';
       loopEl.textContent = mode + ' · loop ' + (loops + 1);
     }
 
@@ -265,9 +281,14 @@ const popupHTML = `<!DOCTYPE html>
       streams = Math.max(1, Math.min(streamCount || 1, 4));
       if (frames.length < 2) streams = 1;
       stage.classList.toggle('multi', streams > 1);
+      // Stream 0 = LEFT, stream 1 = RIGHT (stable placement for the phone).
+      const labels = ['LEFT', 'RIGHT', 'L2', 'R2'];
       let html = '';
       for (let s = 0; s < streams; s++) {
-        html += '<img id="qr' + s + '" alt="TXQR stream ' + (s + 1) + '" src="' + frames[frameIndex(0, s, streams, frames.length)] + '" />';
+        html += '<div class="slot">' +
+          (streams > 1 ? '<label>' + (labels[s] || ('S' + s)) + '</label>' : '') +
+          '<img id="qr' + s + '" alt="TXQR ' + (labels[s] || s) + '" src="' +
+          frames[frameIndex(0, s, streams, frames.length)] + '" /></div>';
       }
       stage.innerHTML = html;
       const ms = Math.max(80, Math.round(1000 / (fps || 6)));

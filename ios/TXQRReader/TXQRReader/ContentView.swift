@@ -24,7 +24,7 @@ struct ContentView: View {
                 Text("TXQR Reader")
                     .font(.title2.weight(.bold))
                 Spacer()
-                layoutBadge
+                sideBadges
             }
 
             ProgressView(value: Double(session.progress), total: 100)
@@ -63,7 +63,7 @@ struct ContentView: View {
                     }
                 }
             } else {
-                Text("Windows auto-picks single or dual QR for speed. This app reads whatever is on screen — 1 or 2 — in the same scan loop.")
+                Text("Windows places dual codes LEFT and RIGHT. This app sorts detections the same way and merges both into one transfer.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -72,15 +72,18 @@ struct ContentView: View {
         .background(.ultraThinMaterial)
     }
 
-    private var layoutBadge: some View {
-        let dual = session.detectedLayout == .dual || session.detectedLayout == .multi
-        return Label(
-            "\(session.lastCodesInFrame) now · peak \(session.peakConcurrent)",
-            systemImage: dual ? "square.grid.2x2" : "qrcode.viewfinder"
-        )
-        .font(.caption.monospacedDigit())
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(dual ? Color.green.opacity(0.25) : Color.white.opacity(0.08), in: Capsule())
+    private var sideBadges: some View {
+        HStack(spacing: 6) {
+            sideChip("L", active: session.leftActive)
+            sideChip("R", active: session.rightActive)
+        }
+    }
+
+    private func sideChip(_ title: String, active: Bool) -> some View {
+        Text(title)
+            .font(.caption.weight(.bold).monospaced())
+            .frame(width: 28, height: 28)
+            .background(active ? Color.green.opacity(0.35) : Color.white.opacity(0.08), in: Circle())
+            .foregroundStyle(active ? Color.green : Color.secondary)
     }
 }

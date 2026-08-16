@@ -26,6 +26,11 @@ const (
 
 // FrameIndexForStream picks which encoded frame a display slot should show.
 // tick advances once per animation step; stream is [0, streams).
+//
+// Placement convention for dual QR:
+//   stream 0 → LEFT side of the overlay
+//   stream 1 → RIGHT side of the overlay
+// The iPhone reader sorts Vision hits left→right and ingests both.
 func FrameIndexForStream(tick, stream, streams, frameCount int) int {
 	if frameCount <= 0 {
 		return 0
