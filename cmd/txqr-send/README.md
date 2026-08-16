@@ -42,7 +42,8 @@ Force with `-streams 1` or `-streams 2`. The iPhone app auto-detects whichever l
 | Chunk | **auto** (~110–150 bytes) | Mid QR versions decode reliably from a monitor |
 | FPS | **5–6** | Matches typical phone decode speed; faster drops frames |
 | Redundancy | **2.0–2.5** | Fountain codes recover missed frames |
-| QR size | **560–640px** | Fills a popup for easy camera lock |
+| Render | **SVG vector** | Pure black/white, crisp at any overlay size |
+| Quiet zone | Built-in + CSS pad | Extra white margin for iPhone lock-on |
 
 Payload size auto-tunes chunk/FPS/redundancy via `txqr.ProfileForPayload`.
 

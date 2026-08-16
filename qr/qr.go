@@ -3,6 +3,8 @@ package qr
 import (
 	"fmt"
 	"image"
+	"image/color"
+	"strings"
 
 	"github.com/makiuchi-d/gozxing"
 	zqrcode "github.com/makiuchi-d/gozxing/qrcode"
@@ -26,14 +28,23 @@ const (
 	Highest
 )
 
-// Encode encodes data into the image with QR code.
-// Uses the library defaults (black modules on white) which scan
-// reliably from a bright monitor into a phone camera. The built-in
-// quiet zone is kept — phones need that margin in a popup window.
-func Encode(data string, size int, lvl RecoveryLevel) (image.Image, error) {
+// newCode builds a high-contrast QR (pure black modules on pure white)
+// with the library quiet zone intact for phone-camera readability.
+func newCode(data string, lvl RecoveryLevel) (*qrcode.QRCode, error) {
 	code, err := qrcode.New(data, qrcode.RecoveryLevel(lvl))
 	if err != nil {
 		return nil, fmt.Errorf("encode QR: %v", err)
+	}
+	code.ForegroundColor = color.Black
+	code.BackgroundColor = color.White
+	return code, nil
+}
+
+// Encode encodes data into a raster QR image (black on white, quiet zone kept).
+func Encode(data string, size int, lvl RecoveryLevel) (image.Image, error) {
+	code, err := newCode(data, lvl)
+	if err != nil {
+		return nil, err
 	}
 	return code.Image(size), nil
 }
@@ -42,6 +53,46 @@ func Encode(data string, size int, lvl RecoveryLevel) (image.Image, error) {
 // exceeds QR version limits so callers can shrink chunk size and retry.
 func EncodeFit(data string, size int, lvl RecoveryLevel) (image.Image, error) {
 	return Encode(data, size, lvl)
+}
+
+// EncodeSVG returns a resolution-independent SVG QR code.
+// Pure #000 on #FFF, crispEdges, viewBox-scaled — ideal for a resizable
+// Windows overlay read by an iPhone camera.
+func EncodeSVG(data string, lvl RecoveryLevel) (string, error) {
+	code, err := newCode(data, lvl)
+	if err != nil {
+		return "", err
+	}
+	bits := code.Bitmap()
+	if len(bits) == 0 || len(bits[0]) == 0 {
+		return "", fmt.Errorf("empty QR bitmap")
+	}
+	n := len(bits)
+
+	var path strings.Builder
+	// Merge black modules into a compact path (1×1 squares).
+	for y := 0; y < n; y++ {
+		row := bits[y]
+		for x := 0; x < len(row); x++ {
+			if !row[x] {
+				continue
+			}
+			// M x,y h1v1h-1z — crisp module square
+			fmt.Fprintf(&path, "M%d %dh1v1h-1z", x, y)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	fmt.Fprintf(&b,
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="100%%" height="100%%" shape-rendering="crispEdges" role="img" aria-label="TXQR">`,
+		n, n)
+	// Full white canvas (includes quiet zone already present in Bitmap).
+	fmt.Fprintf(&b, `<rect width="%d" height="%d" fill="#ffffff"/>`, n, n)
+	b.WriteString(`<path fill="#000000" d="`)
+	b.WriteString(path.String())
+	b.WriteString(`"/></svg>`)
+	return b.String(), nil
 }
 
 // Decode an image with QR code.

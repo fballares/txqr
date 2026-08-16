@@ -70,6 +70,7 @@ func main() {
 	mux.HandleFunc("/popup", srv.handlePopup)
 	mux.HandleFunc("/api/encode", srv.handleEncode)
 	mux.HandleFunc("/api/latest", srv.handleLatest)
+	mux.HandleFunc("/api/frame", srv.handleFrame)
 
 	go func() {
 		if err := http.Serve(ln, mux); err != nil {

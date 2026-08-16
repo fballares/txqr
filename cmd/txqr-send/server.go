@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,8 +20,6 @@ type SenderServer struct {
 	Hotkey  string
 	Streams int // 0 = auto (pick 1 vs 2 by benefit); 1–4 = force
 
-
-	// latest transfer prepared for /popup
 	latest *transfer
 }
 
@@ -33,8 +32,9 @@ type transfer struct {
 	Redundancy float64
 	Streams    int
 	Created    time.Time
-	Image      string   // data URL (gif or png) — always present
-	Frames     []string // PNG data URLs for JS looping (omitted when too many)
+	Chunks     []string // raw TXQR payloads (source of truth for SVG render)
+	Frames     []string // optional inline SVG for small transfers
+	Image      string   // first SVG (preview)
 	Static     bool
 	Error      string
 }
@@ -59,6 +59,7 @@ type encodeResponse struct {
 	Static     bool     `json:"static"`
 	Image      string   `json:"image,omitempty"`
 	Frames     []string `json:"frames,omitempty"`
+	Format     string   `json:"format"` // "svg"
 	Looping    bool     `json:"looping"`
 	Error      string   `json:"error,omitempty"`
 }
@@ -102,13 +103,43 @@ func (s *SenderServer) handleLatest(w http.ResponseWriter, r *http.Request) {
 		Streams:    s.latest.Streams,
 		Static:     s.latest.Static,
 		Image:      s.latest.Image,
+		Format:     "svg",
 		Looping:    !s.latest.Static,
 		Error:      s.latest.Error,
 	}
+	// Inline SVG only for small sets; larger transfers use /api/frame?i=
 	if r.URL.Query().Get("format") == "frames" && len(s.latest.Frames) > 0 {
 		resp.Frames = s.latest.Frames
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleFrame serves one high-contrast SVG QR for overlay animation.
+func (s *SenderServer) handleFrame(w http.ResponseWriter, r *http.Request) {
+	idx, err := strconv.Atoi(r.URL.Query().Get("i"))
+	if err != nil || idx < 0 {
+		http.Error(w, "bad index", http.StatusBadRequest)
+		return
+	}
+	s.mu.RLock()
+	tr := s.latest
+	s.mu.RUnlock()
+	if tr == nil || len(tr.Chunks) == 0 {
+		http.Error(w, "no transfer", http.StatusNotFound)
+		return
+	}
+	if idx >= len(tr.Chunks) {
+		http.Error(w, "index out of range", http.StatusBadRequest)
+		return
+	}
+	svg, err := renderSVG(tr.Chunks[idx])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(svg))
 }
 
 func (s *SenderServer) handleEncode(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +168,7 @@ func (s *SenderServer) handleEncode(w http.ResponseWriter, r *http.Request) {
 		Static:     tr.Static,
 		Image:      tr.Image,
 		Frames:     tr.Frames,
+		Format:     "svg",
 		Looping:    !tr.Static,
 		Error:      tr.Error,
 	})
@@ -175,7 +207,6 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 		return &transfer{Error: err.Error(), Created: time.Now()}, err
 	}
 
-	// Auto mode (0): dual QR only when it should finish faster for this encode.
 	if streams <= 0 {
 		streams = txqr.SuggestedStreamsForTransfer(len(text), len(chunks), used.FPS)
 	}
@@ -198,43 +229,28 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 		Redundancy: used.Redundancy,
 		Streams:    streams,
 		Created:    time.Now(),
+		Chunks:     chunks,
 		Static:     len(chunks) == 1,
 	}
 
-	if tr.Static {
-		pngBytes, err := renderPNG(chunks[0], used.QRSize)
+	// Inline a modest number of SVGs so small transfers start instantly;
+	// larger ones fetch /api/frame on demand (still vector, still crisp).
+	const inlineLimit = 64
+	limit := len(chunks)
+	if limit > inlineLimit {
+		limit = inlineLimit
+	}
+	frames := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		svg, err := renderSVG(chunks[i])
 		if err != nil {
 			return nil, err
 		}
-		tr.Image = dataURL("image/png", pngBytes)
-		tr.Frames = []string{tr.Image}
-	} else {
-		gifBytes, err := renderGIF(chunks, used.QRSize, used.FPS)
-		if err != nil {
-			return nil, err
-		}
-		tr.Image = dataURL("image/gif", gifBytes)
-
-		// Dual overlay needs discrete frames. Cap size so localhost JSON stays sane;
-		// if the set is huge, fall back to a single GIF stream.
-		maxJSFrames := 250
-		if streams >= 2 {
-			maxJSFrames = 360
-		}
-		if len(chunks) <= maxJSFrames {
-			frames := make([]string, 0, len(chunks))
-			for _, chunk := range chunks {
-				pngBytes, err := renderPNG(chunk, used.QRSize)
-				if err != nil {
-					return nil, err
-				}
-				frames = append(frames, dataURL("image/png", pngBytes))
-			}
-			tr.Frames = frames
-		} else if streams >= 2 {
-			tr.Streams = 1
-			streams = 1
-		}
+		frames = append(frames, svg)
+	}
+	tr.Frames = frames
+	if len(frames) > 0 {
+		tr.Image = frames[0]
 	}
 	return tr, nil
 }

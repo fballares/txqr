@@ -157,6 +157,7 @@ const popupHTML = `<!DOCTYPE html>
     body {
       display: grid;
       grid-template-rows: auto 1fr auto;
+      height: 100%%;
       min-height: 100%%;
     }
     .banner {
@@ -169,38 +170,52 @@ const popupHTML = `<!DOCTYPE html>
     .banner strong { color: #3ecf8e; font-weight: 650; }
     .stage {
       display: grid;
-      gap: 8px;
+      gap: 10px;
       place-items: center;
       align-content: center;
-      padding: 8px 10px 4px;
-      background: #fff;
+      padding: 12px;
+      background: #ffffff;
+      min-height: 0;
+      height: 100%%;
     }
     .stage.multi {
       grid-template-columns: 1fr 1fr;
-      column-gap: 12px;
-      padding-left: 12px;
-      padding-right: 12px;
+      column-gap: 16px;
     }
     .slot {
       display: grid;
-      gap: 4px;
+      gap: 6px;
       justify-items: center;
+      width: 100%%;
+      height: 100%%;
+      min-height: 0;
+      align-content: center;
     }
     .slot label {
       font-size: 0.7rem;
       font-weight: 700;
       letter-spacing: 0.08em;
-      color: #444;
+      color: #333;
       text-transform: uppercase;
     }
-    .stage img {
-      width: min(280px, 42vw);
-      height: auto;
-      image-rendering: pixelated;
-      background: #fff;
+    .qr-host {
+      /* Extra white quiet margin around the vector QR for phone cameras. */
+      box-sizing: border-box;
+      width: min(100%%, calc(100vh - 150px));
+      max-width: 100%%;
+      aspect-ratio: 1 / 1;
+      padding: 7%%;
+      background: #ffffff;
+      border: 1px solid #eee;
     }
-    .stage:not(.multi) img {
-      width: min(360px, 88vw);
+    .stage.multi .qr-host {
+      width: min(100%%, calc((100vh - 150px) * 0.92));
+    }
+    .qr-host svg {
+      display: block;
+      width: 100%%;
+      height: 100%%;
+      shape-rendering: crispEdges;
     }
     footer {
       display: flex;
@@ -225,9 +240,8 @@ const popupHTML = `<!DOCTYPE html>
 </head>
 <body>
   <div class="banner">
-    <strong>Looping continuously</strong> —
-    dual mode uses <strong>LEFT</strong> + <strong>RIGHT</strong> QR slots; iPhone reads both sides.
-    Drag this window to your phone stand.
+    <strong>Vector QR</strong> — high-contrast SVG, scales as you resize.
+    Dual mode: <strong>LEFT</strong> + <strong>RIGHT</strong>. Drag to your phone stand.
   </div>
   <div class="stage" id="stage">
     <div class="err" id="status">Preparing QR stream…</div>
@@ -241,11 +255,14 @@ const popupHTML = `<!DOCTYPE html>
     const stats = document.getElementById('stats');
     const loopEl = document.getElementById('loop');
     const defaultStreams = %d;
-    let frames = [];
+    let frameCount = 0;
+    let inlineFrames = [];
+    let svgCache = {};
     let tickN = 0;
     let loops = 0;
     let streams = 1;
     let timer = null;
+    let inflight = {};
 
     function frameIndex(tick, stream, streamCount, n) {
       if (n <= 0) return 0;
@@ -253,71 +270,103 @@ const popupHTML = `<!DOCTYPE html>
       return (tick + offset) %% n;
     }
 
-    function showStatic(src) {
-      stage.classList.remove('multi');
-      stage.innerHTML = '<img alt="TXQR" src="' + src + '" />';
-      loopEl.textContent = 'Single QR · Esc closes';
+    async function svgAt(i) {
+      if (inlineFrames[i]) return inlineFrames[i];
+      if (svgCache[i]) return svgCache[i];
+      if (inflight[i]) return inflight[i];
+      inflight[i] = fetch('/api/frame?i=' + i)
+        .then(r => {
+          if (!r.ok) throw new Error('frame ' + i);
+          return r.text();
+        })
+        .then(svg => {
+          svgCache[i] = svg;
+          delete inflight[i];
+          return svg;
+        })
+        .catch(err => {
+          delete inflight[i];
+          throw err;
+        });
+      return inflight[i];
     }
 
-    function paint() {
-      if (!frames.length) return;
-      for (let s = 0; s < streams; s++) {
-        const img = document.getElementById('qr' + s);
-        if (!img) continue;
-        const idx = frameIndex(tickN, s, streams, frames.length);
-        img.src = frames[idx];
+    function setHostSVG(host, svg) {
+      host.innerHTML = svg;
+      const el = host.querySelector('svg');
+      if (el) {
+        el.removeAttribute('width');
+        el.removeAttribute('height');
+        el.setAttribute('width', '100%%');
+        el.setAttribute('height', '100%%');
+        el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
       }
-      tickN += 1;
-      if (frames.length && tickN %% frames.length === 0) loops += 1;
-      const mode = streams > 1 ? 'LEFT+RIGHT QRs' : 'single QR';
-      loopEl.textContent = mode + ' · loop ' + (loops + 1);
     }
 
-    function showAnimated(list, fps, streamCount) {
-      frames = list;
+    async function showStatic(svg) {
+      stage.classList.remove('multi');
+      stage.innerHTML = '<div class="slot"><div class="qr-host" id="host0"></div></div>';
+      setHostSVG(document.getElementById('host0'), svg);
+      loopEl.textContent = 'Single vector QR · resize freely · Esc closes';
+    }
+
+    async function paint() {
+      if (frameCount <= 0) return;
+      const jobs = [];
+      for (let s = 0; s < streams; s++) {
+        const idx = frameIndex(tickN, s, streams, frameCount);
+        const host = document.getElementById('host' + s);
+        if (!host) continue;
+        jobs.push(svgAt(idx).then(svg => setHostSVG(host, svg)));
+      }
+      await Promise.all(jobs);
+      tickN += 1;
+      if (tickN %% frameCount === 0) loops += 1;
+      const mode = streams > 1 ? 'LEFT+RIGHT SVG' : 'single SVG';
+      loopEl.textContent = mode + ' · loop ' + (loops + 1) + ' · crisp vector';
+    }
+
+    function showAnimated(count, fps, streamCount, inline) {
+      frameCount = count;
+      inlineFrames = inline || [];
+      svgCache = {};
       tickN = 0;
       loops = 0;
-      // Trust server auto-selection; never show dual for a 1-frame set.
       streams = Math.max(1, Math.min(streamCount || 1, 4));
-      if (frames.length < 2) streams = 1;
+      if (frameCount < 2) streams = 1;
       stage.classList.toggle('multi', streams > 1);
-      // Stream 0 = LEFT, stream 1 = RIGHT (stable placement for the phone).
       const labels = ['LEFT', 'RIGHT', 'L2', 'R2'];
       let html = '';
       for (let s = 0; s < streams; s++) {
         html += '<div class="slot">' +
           (streams > 1 ? '<label>' + (labels[s] || ('S' + s)) + '</label>' : '') +
-          '<img id="qr' + s + '" alt="TXQR ' + (labels[s] || s) + '" src="' +
-          frames[frameIndex(0, s, streams, frames.length)] + '" /></div>';
+          '<div class="qr-host" id="host' + s + '"></div></div>';
       }
       stage.innerHTML = html;
-      const ms = Math.max(80, Math.round(1000 / (fps || 6)));
+      const ms = Math.max(90, Math.round(1000 / (fps || 6)));
       if (timer) clearInterval(timer);
-      timer = setInterval(paint, ms);
       paint();
+      timer = setInterval(() => { paint(); }, ms);
     }
 
     async function load() {
       try {
         const res = await fetch('/api/latest?format=frames');
         const data = await res.json();
-        if (data.error && !data.image && !(data.frames && data.frames.length)) {
+        if (data.error && !data.image && !(data.frames && data.frames.length) && !data.frame_count) {
           stage.innerHTML = '<div class="err">' + data.error + '</div>';
           return;
         }
         const sc = data.streams || 1;
         const kind = data.static
-          ? 'single static QR'
-          : (data.frame_count + ' frames @ ' + data.fps + ' fps · ' + (sc > 1 ? (sc + ' concurrent') : 'single'));
-        stats.textContent = data.bytes + ' bytes · ' + kind;
-        if (data.static || !data.frames || data.frames.length <= 1) {
-          showStatic(data.image || (data.frames && data.frames[0]));
-        } else if (data.frames && data.frames.length) {
-          showAnimated(data.frames, data.fps, sc);
+          ? 'single vector QR'
+          : (data.frame_count + ' SVG frames @ ' + data.fps + ' fps · ' + (sc > 1 ? 'LEFT+RIGHT' : 'single'));
+        stats.textContent = data.bytes + ' bytes · ' + kind + ' · high contrast';
+        if (data.static || data.frame_count <= 1) {
+          const svg = (data.frames && data.frames[0]) || data.image;
+          await showStatic(svg);
         } else {
-          stage.classList.remove('multi');
-          stage.innerHTML = '<img alt="TXQR stream" src="' + data.image + '" />';
-          loopEl.textContent = 'GIF looping · Esc closes';
+          showAnimated(data.frame_count, data.fps, sc, data.frames || []);
         }
       } catch (err) {
         stage.innerHTML = '<div class="err">' + (err.message || err) + '</div>';
@@ -325,6 +374,10 @@ const popupHTML = `<!DOCTYPE html>
     }
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') window.close();
+    });
+    window.addEventListener('resize', () => {
+      // SVG is viewBox-based; hosts already use %% width — force a repaint for safety.
+      if (frameCount > 0) paint();
     });
     load();
   </script>

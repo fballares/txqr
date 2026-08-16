@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/divan/txqr"
@@ -36,12 +37,12 @@ func TestEncodeTransferLongUsesFountain(t *testing.T) {
 	if used.FPS < 1 || used.FPS > 10 {
 		t.Fatalf("unexpected fps %d", used.FPS)
 	}
-	png, err := renderPNG(chunks[0], used.QRSize)
+	svg, err := renderSVG(chunks[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(png) < 100 {
-		t.Fatalf("png too small: %d", len(png))
+	if !strings.Contains(svg, "crispEdges") || !strings.Contains(svg, "#000000") {
+		t.Fatalf("unexpected SVG: %s", svg[:min(120, len(svg))])
 	}
 }
 
@@ -56,4 +57,11 @@ func TestParseHotkey(t *testing.T) {
 	if key == 0 {
 		t.Fatal("key unset")
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
