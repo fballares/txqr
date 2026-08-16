@@ -31,8 +31,13 @@ Force with `-streams 1` or `-streams 2`. The iPhone app auto-detects whichever l
 
 ### Tray menu
 - **Show QR from clipboard** — same as clicking the icon  
-- **Open settings…** — manual paste / parameter overrides  
+- **Show last transfer again** — re-open overlay without re-encoding  
+- **Phone stand mode** — larger always-on-top-friendly overlay with aim guides  
+- **Pause / Resume animation** — freeze frames while you reposition the phone  
+- **Open settings / coach…** — first-run guide, paste encode, stream settings  
 - **Quit TXQR Send** — stop the background app  
+
+Hotkey and successful encodes also fire a brief OS toast when available.
 
 ## Optimal defaults (clipboard use case)
 

@@ -45,9 +45,11 @@ You do **not** need to catch the beginning of the animation.
 
 ## Movable overlay for phone placement
 
-- Overlay opens as a **small window** (about 420×540)
+- Overlay opens as a **small window** (about 420×540; wider for dual QR)
 - On Windows: prefers **bottom-right**, tries **always-on-top**
 - **Drag the window** anywhere convenient (desk corner, beside keyboard, etc.)
+- Tray → **Phone stand mode** (or `/popup?stand=1`) for a larger full-bleed stage with L/R aim guides and a transfer HUD (bytes, frame, CRC, loop bar)
+- Space pauses/resumes the animation; Esc closes
 - Park the phone on a stand aimed at that spot for hands-free scanning
 
 ## Integrity (CRC)

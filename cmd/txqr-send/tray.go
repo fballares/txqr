@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync/atomic"
 
 	"fyne.io/systray"
 )
@@ -16,7 +17,12 @@ var trayIcon []byte
 type trayApp struct {
 	hotkey   string
 	baseURL  string
+	status   *atomic.Value // string
 	onShowQR func()
+	onReplay func()
+	onPause  func()
+	onResume func()
+	onStand  func()
 	onOpenUI func()
 }
 
@@ -29,16 +35,21 @@ func runTray(app *trayApp) {
 func (app *trayApp) onReady() {
 	systray.SetIcon(trayIcon)
 	systray.SetTitle("TXQR")
-	systray.SetTooltip(fmt.Sprintf("TXQR Send — copy text, click tray or press %s (overlay loops until done)", app.hotkey))
+	app.refreshTooltip("Ready")
 
-	// Left-click tray icon = generate QR from clipboard
 	systray.SetOnTapped(func() {
 		app.onShowQR()
 	})
 
-	mShow := systray.AddMenuItem("Show QR from clipboard", "Encode clipboard and open movable overlay")
+	mShow := systray.AddMenuItem("Show QR from clipboard", "Encode clipboard and open overlay")
 	mShow.SetIcon(trayIcon)
-	mUI := systray.AddMenuItem("Open settings…", "Open the local settings page")
+	mReplay := systray.AddMenuItem("Show last transfer again", "Re-open overlay for the last payload")
+	mStand := systray.AddMenuItem("Phone stand mode", "Bottom-right, minimal chrome, max contrast")
+	systray.AddSeparator()
+	mPause := systray.AddMenuItem("Pause animation", "Freeze the current QR frames")
+	mResume := systray.AddMenuItem("Resume animation", "Continue the looping QR stream")
+	systray.AddSeparator()
+	mUI := systray.AddMenuItem("Open settings / coach…", "First-run guide and encoder settings")
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit TXQR Send", "Stop the background sender")
 
@@ -47,15 +58,39 @@ func (app *trayApp) onReady() {
 			select {
 			case <-mShow.ClickedCh:
 				app.onShowQR()
+			case <-mReplay.ClickedCh:
+				if app.onReplay != nil {
+					app.onReplay()
+				}
+			case <-mStand.ClickedCh:
+				if app.onStand != nil {
+					app.onStand()
+				}
+			case <-mPause.ClickedCh:
+				if app.onPause != nil {
+					app.onPause()
+				}
+				app.refreshTooltip("Paused")
+			case <-mResume.ClickedCh:
+				if app.onResume != nil {
+					app.onResume()
+				}
+				app.refreshTooltip("Showing QR")
 			case <-mUI.ClickedCh:
 				app.onOpenUI()
 			case <-mQuit.ClickedCh:
 				systray.Quit()
-				// Ensure process exits even if other goroutines hang.
 				os.Exit(0)
 			}
 		}
 	}()
 
-	log.Printf("Tray icon ready — click it or press %s to show QR", app.hotkey)
+	log.Printf("Tray ready — click or press %s · stand mode available", app.hotkey)
+}
+
+func (app *trayApp) refreshTooltip(state string) {
+	if app.status != nil {
+		app.status.Store(state)
+	}
+	systray.SetTooltip(fmt.Sprintf("TXQR Send · %s · hotkey %s", state, app.hotkey))
 }

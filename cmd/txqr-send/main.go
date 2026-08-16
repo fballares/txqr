@@ -71,6 +71,10 @@ func main() {
 	mux.HandleFunc("/api/encode", srv.handleEncode)
 	mux.HandleFunc("/api/latest", srv.handleLatest)
 	mux.HandleFunc("/api/frame", srv.handleFrame)
+	mux.HandleFunc("/api/status", srv.handleStatus)
+	mux.HandleFunc("/api/control", srv.handleControl)
+	mux.HandleFunc("/api/send", srv.handleSend)
+	mux.HandleFunc("/api/settings", srv.handleSettings)
 
 	go func() {
 		if err := http.Serve(ln, mux); err != nil {
@@ -87,8 +91,13 @@ func main() {
 		initial = string(data)
 	}
 
-	openPopup := func() {
-		url := fmt.Sprintf("%s/popup?t=%d", baseURL, time.Now().UnixNano())
+	openPopupURL := func(path string) {
+		url := fmt.Sprintf("%s%s", baseURL, path)
+		if !strings.Contains(url, "?") {
+			url += fmt.Sprintf("?t=%d", time.Now().UnixNano())
+		} else {
+			url += fmt.Sprintf("&t=%d", time.Now().UnixNano())
+		}
 		streams := 1
 		srv.mu.RLock()
 		if srv.latest != nil && srv.latest.Streams > 0 {
@@ -96,14 +105,26 @@ func main() {
 		}
 		srv.mu.RUnlock()
 		w, h := txqr.OverlaySize(streams)
+		if strings.Contains(path, "stand=1") {
+			w, h = 1100, 720
+		}
 		if err := openOverlayWindow(url, w, h); err != nil {
 			log.Printf("open overlay: %v (open %s manually)", err, url)
 		}
 	}
 
+	openPopup := func() {
+		openPopupURL("/popup")
+	}
+
+	openStand := func() {
+		openPopupURL("/popup?stand=1")
+	}
+
 	triggerFromClipboard := func() {
 		if err := srv.showClipboard(); err != nil {
 			log.Printf("clipboard transfer: %v", err)
+			notifyUser("TXQR Send", "Clipboard empty or unreadable — copy text first")
 		} else {
 			srv.mu.RLock()
 			tr := srv.latest
@@ -114,6 +135,7 @@ func main() {
 					mode = fmt.Sprintf("%d concurrent QRs", tr.Streams)
 				}
 				log.Printf("showing %s: %d bytes, %d frames @ %d fps", mode, tr.Bytes, tr.FrameCount, tr.FPS)
+				notifyUser("TXQR Send", fmt.Sprintf("%d bytes · %s · scan with phone", tr.Bytes, mode))
 			}
 		}
 		if !*noBrowser {
@@ -155,6 +177,32 @@ func main() {
 				baseURL: baseURL,
 				onShowQR: func() {
 					triggerFromClipboard()
+				},
+				onReplay: func() {
+					if srv.Latest() == nil {
+						notifyUser("TXQR Send", "No previous transfer — copy text and show QR first")
+						return
+					}
+					srv.SetPaused(false)
+					openPopup()
+				},
+				onStand: func() {
+					if srv.Latest() == nil {
+						if err := srv.showClipboard(); err != nil {
+							notifyUser("TXQR Send", "Copy text first, then open stand mode")
+							return
+						}
+					}
+					srv.SetPaused(false)
+					openStand()
+				},
+				onPause: func() {
+					srv.SetPaused(true)
+					notifyUser("TXQR Send", "Animation paused")
+				},
+				onResume: func() {
+					srv.SetPaused(false)
+					notifyUser("TXQR Send", "Animation resumed")
 				},
 				onOpenUI: func() {
 					_ = openBrowser(baseURL + "/")

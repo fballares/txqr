@@ -47,7 +47,17 @@ open TXQRReader.xcodeproj
 2. Run on your **iPhone 17 Pro**
 3. Allow Camera access
 4. Point at the Windows multi-QR overlay; progress fills until Complete
-5. Tap **Copy** (or **Share / Save**)
+5. Tap **Copy**, **Save to Files**, or Share when the ring hits 100%
+
+### Reader UX
+
+- LEFT / RIGHT aim brackets aligned with the Windows overlay
+- Large progress ring + L/R lock chips
+- Torch toggle and slight exposure bias for bright monitors
+- Haptics + completion sound; success sheet with CRC status
+- First-run coach; screen sleep disabled while scanning
+- Save recovered text as a `.txt` via the system share sheet
+- Live Activity stub (`TransferLiveActivityStub`) ready for a future ActivityKit widget
 
 If you use [XcodeGen](https://github.com/yonaskolb/XcodeGen):
 

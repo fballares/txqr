@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import AudioToolbox
 
 #if canImport(Txqr)
 import Txqr
@@ -27,18 +28,27 @@ final class TransferSession: ObservableObject {
     @Published var leftActive: Bool = false
     @Published var rightActive: Bool = false
     @Published var preview: String = ""
+    @Published var integrityRetry: Bool = false
 
     private var acceptedTotal: Int = 0
+    private var lastProgressHaptic = 0
+    private let softHaptic = UIImpactFeedbackGenerator(style: .light)
+    private let notifyHaptic = UINotificationFeedbackGenerator()
 
 #if canImport(Txqr)
     private var decoder = TxqrNewDecoder()
 #endif
 
     func start() {
+        softHaptic.prepare()
+        notifyHaptic.prepare()
         statusText = "Scanning — LEFT/RIGHT dual or single auto"
+        TransferLiveActivityStub.start(status: statusText)
     }
 
-    func stop() {}
+    func stop() {
+        TransferLiveActivityStub.end()
+    }
 
     /// Positioned QR payloads already sorted LEFT → RIGHT by the scanner.
     func ingest(positioned: [PositionedQR]) {
@@ -47,7 +57,6 @@ final class TransferSession: ObservableObject {
             peakConcurrent = positioned.count
         }
 
-        // Map to Windows LEFT / RIGHT halves when we see two codes.
         if positioned.count >= 2 {
             leftActive = true
             rightActive = true
@@ -59,6 +68,9 @@ final class TransferSession: ObservableObject {
             if detectedLayout != .dual && detectedLayout != .multi {
                 detectedLayout = .single
             }
+        } else {
+            leftActive = false
+            rightActive = false
         }
 
         guard !isComplete, !positioned.isEmpty else { return }
@@ -70,8 +82,16 @@ final class TransferSession: ObservableObject {
         let accepted = Int(decoder.decodeBatch(joined))
         if accepted > 0 {
             acceptedTotal += accepted
-            progress = Int(decoder.progress())
+            let next = Int(decoder.progress())
+            if next > progress {
+                progress = next
+                if next / 20 > lastProgressHaptic / 20 {
+                    lastProgressHaptic = next
+                    softHaptic.impactOccurred()
+                }
+            }
             let unique = Int(decoder.uniqueFrames())
+            integrityRetry = false
             if positioned.count >= 2 {
                 statusText = "LEFT+RIGHT locked · \(unique) unique · +\(accepted)"
             } else {
@@ -82,7 +102,9 @@ final class TransferSession: ObservableObject {
                 let verified = decoder.isVerified()
                 finish(text: decoder.data(), verified: verified, crc: decoder.expectedCRCHex())
             } else if !decoder.integrityError().isEmpty {
+                integrityRetry = true
                 statusText = "Integrity retry — \(decoder.integrityError())"
+                notifyHaptic.notificationOccurred(.warning)
             }
         } else if !codes.isEmpty {
             statusText = "Saw \(codes.count) QR — waiting for TXQR frames"
@@ -105,12 +127,31 @@ final class TransferSession: ObservableObject {
         } else {
             statusText = "Complete · \(text.count) bytes · \(mode)"
         }
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        notifyHaptic.notificationOccurred(.success)
+        AudioServicesPlaySystemSound(1057)
+        TransferLiveActivityStub.update(progress: 100, status: statusText)
     }
 
     func copyToClipboard() {
         UIPasteboard.general.string = recoveredText
         statusText = "Copied \(recoveredText.count) bytes"
+    }
+
+    func playCopyHaptic() {
+        notifyHaptic.notificationOccurred(.success)
+    }
+
+    /// Writes recovered text to a temp .txt for Share / Files.
+    func writeTempFile() -> URL? {
+        let name = "txqr-\(Int(Date().timeIntervalSince1970)).txt"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        do {
+            try recoveredText.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            statusText = "Couldn't write file: \(error.localizedDescription)"
+            return nil
+        }
     }
 
     func reset() {
@@ -127,6 +168,9 @@ final class TransferSession: ObservableObject {
         detectedLayout = .idle
         leftActive = false
         rightActive = false
+        integrityRetry = false
+        lastProgressHaptic = 0
         statusText = "Scanning — LEFT/RIGHT dual or single auto"
+        TransferLiveActivityStub.start(status: statusText)
     }
 }

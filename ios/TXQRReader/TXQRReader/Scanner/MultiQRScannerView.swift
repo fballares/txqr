@@ -12,12 +12,18 @@ struct PositionedQR: Equatable {
 /// Live camera preview: Vision multi-QR detect, sorted LEFT → RIGHT for dual slots.
 struct MultiQRScannerView: UIViewControllerRepresentable {
     @ObservedObject var session: TransferSession
+    @ObservedObject var camera: CameraControls
 
     func makeUIViewController(context: Context) -> MultiQRScannerController {
         let controller = MultiQRScannerController()
         controller.onCodes = { positioned in
             Task { @MainActor in
                 session.ingest(positioned: positioned)
+            }
+        }
+        controller.onDevice = { device in
+            Task { @MainActor in
+                camera.bind(device: device)
             }
         }
         return controller
@@ -28,6 +34,7 @@ struct MultiQRScannerView: UIViewControllerRepresentable {
 
 final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate {
     var onCodes: (([PositionedQR]) -> Void)?
+    var onDevice: ((AVCaptureDevice?) -> Void)?
 
     private let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -35,6 +42,7 @@ final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutput
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var lastEmit = Date.distantPast
     private let minInterval: TimeInterval = 1.0 / 12.0
+    private weak var cameraDevice: AVCaptureDevice?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -74,6 +82,10 @@ final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutput
             return
         }
         session.addInput(input)
+        cameraDevice = device
+        DispatchQueue.main.async { [weak self] in
+            self?.onDevice?(device)
+        }
 
         try? device.lockForConfiguration()
         if device.isFocusModeSupported(.continuousAutoFocus) {
@@ -81,6 +93,10 @@ final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutput
         }
         if device.isExposureModeSupported(.continuousAutoExposure) {
             device.exposureMode = .continuousAutoExposure
+        }
+        // Bias slightly darker so bright monitor QRs don't wash out.
+        if device.isExposureModeSupported(.continuousAutoExposure) {
+            device.setExposureTargetBias(-0.35, completionHandler: nil)
         }
         device.unlockForConfiguration()
 
@@ -115,7 +131,6 @@ final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutput
         let request = VNDetectBarcodesRequest { [weak self] req, error in
             guard error == nil, let results = req.results as? [VNBarcodeObservation] else { return }
 
-            // Keep position so we can map to Windows LEFT / RIGHT slots.
             var positioned: [PositionedQR] = []
             positioned.reserveCapacity(results.count)
             var seenPayload = Set<String>()
@@ -137,8 +152,6 @@ final class MultiQRScannerController: UIViewController, AVCaptureVideoDataOutput
         }
         request.symbologies = [.qr]
 
-        // .right matches typical portrait back-camera buffers so midX is left→right
-        // in the upright framed image the user sees.
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
         try? handler.perform([request])
     }

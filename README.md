@@ -22,9 +22,9 @@ Also see `cmd/txqr-tester` app for automated testing of different encoder parame
 Use `cmd/txqr-send` on Windows and `ios/TXQRReader` on iPhone:
 
 1. Run `txqr-send` (tray icon, multi-QR overlay)  
-2. Copy text → click tray or **Ctrl+Shift+Q**  
-3. Overlay loops **1–2 QR codes** (drag to your phone stand)  
-4. iPhone TXQRReader multi-detects all visible QRs and reconstructs the payload  
+2. Copy text → click tray or **Ctrl+Shift+Q** (toast confirms)  
+3. Overlay loops **1–2 QR codes** with HUD / L–R guides (stand mode available)  
+4. iPhone TXQRReader aims with brackets, torch, progress ring → Copy / Save file  
 
 ```bash
 go run ./cmd/txqr-send          # auto 1 vs 2 QR by benefit
