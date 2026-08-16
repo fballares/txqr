@@ -97,8 +97,21 @@ func (d *Decoder) Progress() int {
 
 // updateProgress updates progress and complete state of reading.
 func (d *Decoder) updateProgress() {
-	d.speed = d.Read() * int(time.Second) / int(time.Since(d.start))
-	d.progress = 100 * d.Read() / d.Total()
+	total := d.Total()
+	if total <= 0 {
+		d.progress = 0
+		d.speed = 0
+		return
+	}
+	read := d.Read()
+	elapsed := time.Since(d.start)
+	if elapsed > 0 {
+		d.speed = read * int(time.Second) / int(elapsed)
+	}
+	d.progress = 100 * read / total
+	if d.IsCompleted() {
+		d.progress = 100
+	}
 }
 
 // TotalTimeMs returns the total scan duration in milliseconds.

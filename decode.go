@@ -110,16 +110,26 @@ func (d *Decoder) DataBytes() []byte {
 	return d.fd.Decode()
 }
 
-// Length returns length of the decoded data.
-// TODO: remove
+// Length returns the expected total size of the decoded data in bytes.
 func (d *Decoder) Length() int {
-	return 0
+	return d.total
 }
 
-// Read returns amount of currently read bytes.
-// TODO: remove
+// Read returns an estimate of how many bytes have been received so far.
+// For fountain-coded transfers this is based on unique frames seen and is
+// capped at the total payload size. Once decoding completes it returns Total.
 func (d *Decoder) Read() int {
-	return 0
+	if d.completed {
+		return d.total
+	}
+	if d.chunkLen <= 0 || d.total <= 0 {
+		return 0
+	}
+	n := len(d.cache) * d.chunkLen
+	if n > d.total {
+		return d.total
+	}
+	return n
 }
 
 // Total returns total amount of data.

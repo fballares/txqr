@@ -25,20 +25,21 @@ No error correction is implemented, as QR code layer already has one.
 
 Header
 
-    offset/total|<data>
+    blockCode/chunkLen/total|<data>
 
-	both offset and total are represents byte position
-	and printed in HEX
+	blockCode identifies the fountain-code block, chunkLen is the
+	encoder chunk size, and total is the full payload length in bytes.
+	Numeric fields are printed in decimal.
 
-For, example:
+For example:
 
  First chunk:
 
-    0/11|hello
+    0/5/11|hello
 
  Second chunk:
 
-    5/11|world!
+    1/5/11|world!
 
 
 */
