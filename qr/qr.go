@@ -27,12 +27,21 @@ const (
 )
 
 // Encode encodes data into the image with QR code.
+// Uses the library defaults (black modules on white) which scan
+// reliably from a bright monitor into a phone camera. The built-in
+// quiet zone is kept — phones need that margin in a popup window.
 func Encode(data string, size int, lvl RecoveryLevel) (image.Image, error) {
-	qr, err := qrcode.New(data, qrcode.RecoveryLevel(lvl))
+	code, err := qrcode.New(data, qrcode.RecoveryLevel(lvl))
 	if err != nil {
 		return nil, fmt.Errorf("encode QR: %v", err)
 	}
-	return qr.Image(size), nil
+	return code.Image(size), nil
+}
+
+// EncodeFit encodes data at lvl. Returns an error if the payload
+// exceeds QR version limits so callers can shrink chunk size and retry.
+func EncodeFit(data string, size int, lvl RecoveryLevel) (image.Image, error) {
+	return Encode(data, size, lvl)
 }
 
 // Decode an image with QR code.

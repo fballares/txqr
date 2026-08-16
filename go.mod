@@ -1,5 +1,7 @@
 module github.com/divan/txqr
 
+go 1.22.2
+
 require (
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/google/gofountain v0.0.0-20160820054803-4928733085e9
@@ -11,5 +13,15 @@ require (
 	github.com/mdp/qrterminal v1.0.1
 	github.com/pyk/byten v0.0.0-20140925233358-f847a130bf6d
 	github.com/skip2/go-qrcode v0.0.0-20171229120447-cf5f9fa2f0d8
-	golang.org/x/text v0.3.0 // indirect
+	golang.design/x/clipboard v0.7.0
+	golang.design/x/hotkey v0.4.1
+)
+
+require (
+	golang.org/x/exp v0.0.0-20190731235908-ec7cb31e5a56 // indirect
+	golang.org/x/image v0.6.0 // indirect
+	golang.org/x/mobile v0.0.0-20230301163155-e0f57694e12c // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.8.0 // indirect
+	rsc.io/qr v0.2.0 // indirect
 )

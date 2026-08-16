@@ -8,8 +8,8 @@ const indexHTML = `<!DOCTYPE html>
   <title>TXQR Send</title>
   <style>
     :root {
-      --bg0: #0f1419;
-      --bg1: #1a2332;
+      --bg0: #10151c;
+      --bg1: #182232;
       --ink: #e8eef7;
       --muted: #8b9bb4;
       --accent: #3d9cf0;
@@ -22,196 +22,105 @@ const indexHTML = `<!DOCTYPE html>
       margin: 0;
       min-height: 100%%;
       background:
-        radial-gradient(1200px 600px at 10%% -10%%, #1e3a5f 0%%, transparent 55%%),
-        radial-gradient(900px 500px at 100%% 0%%, #143028 0%%, transparent 50%%),
+        radial-gradient(1100px 560px at 8%% -12%%, #1e3a5f 0%%, transparent 55%%),
+        radial-gradient(800px 460px at 100%% 0%%, #143028 0%%, transparent 50%%),
         linear-gradient(160deg, var(--bg0), var(--bg1));
       color: var(--ink);
       font-family: "Segoe UI", "Helvetica Neue", sans-serif;
     }
-    body {
-      display: grid;
-      place-items: center;
-      padding: 24px;
-    }
-    .shell {
-      width: min(920px, 100%%);
-      display: grid;
-      gap: 20px;
-    }
+    body { display: grid; place-items: center; padding: 24px; }
+    .shell { width: min(880px, 100%%); display: grid; gap: 18px; }
     header h1 {
       margin: 0;
-      font-size: clamp(2rem, 4vw, 2.8rem);
+      font-size: clamp(2rem, 4vw, 2.7rem);
       letter-spacing: -0.03em;
-      font-weight: 700;
     }
-    header p {
-      margin: 8px 0 0;
-      color: var(--muted);
-      max-width: 42rem;
-      line-height: 1.45;
+    header p { margin: 8px 0 0; color: var(--muted); line-height: 1.45; max-width: 40rem; }
+    kbd {
+      display: inline-block;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      font: inherit;
+      font-size: 0.92em;
     }
     .panel {
-      display: grid;
-      gap: 14px;
-      padding: 18px;
+      display: grid; gap: 14px; padding: 18px;
       border: 1px solid var(--line);
       background: rgba(8, 12, 18, 0.45);
-      backdrop-filter: blur(8px);
     }
-    label {
-      display: grid;
-      gap: 6px;
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
+    label { display: grid; gap: 6px; font-size: 0.85rem; color: var(--muted); }
     textarea, input {
-      width: 100%%;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.03);
-      color: var(--ink);
-      border-radius: 0;
-      padding: 12px 14px;
-      font: inherit;
+      width: 100%%; border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03); color: var(--ink);
+      padding: 12px 14px; font: inherit;
     }
-    textarea {
-      min-height: 160px;
-      resize: vertical;
-      line-height: 1.4;
-    }
-    .row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-    @media (max-width: 700px) {
-      .row { grid-template-columns: 1fr; }
-    }
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
+    textarea { min-height: 140px; resize: vertical; }
+    .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
     button {
-      appearance: none;
-      border: 0;
-      padding: 12px 18px;
-      font: inherit;
-      font-weight: 600;
-      cursor: pointer;
-      background: var(--accent);
-      color: var(--accent-ink);
+      appearance: none; border: 0; padding: 12px 18px;
+      font: inherit; font-weight: 600; cursor: pointer;
+      background: var(--accent); color: var(--accent-ink);
     }
     button.secondary {
-      background: transparent;
-      color: var(--ink);
-      border: 1px solid var(--line);
+      background: transparent; color: var(--ink); border: 1px solid var(--line);
     }
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .stage {
-      display: none;
-      place-items: center;
-      gap: 14px;
-      padding: 20px;
-      border: 1px solid var(--line);
-      background: #fff;
-      color: #111;
-      min-height: 520px;
-    }
-    .stage.active { display: grid; }
-    .stage img {
-      width: min(520px, 90vw);
-      height: auto;
-      image-rendering: pixelated;
-    }
-    .meta {
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
-    .meta strong { color: var(--ok); font-weight: 600; }
-    .error {
-      color: #ff8e8e;
-      min-height: 1.2em;
-    }
-    .sending header, .sending .composer { display: none; }
-    .sending .stage { display: grid; }
+    .error { color: #ff8e8e; min-height: 1.2em; }
+    .meta { color: var(--muted); font-size: 0.9rem; }
+    .meta strong { color: var(--ok); }
   </style>
 </head>
 <body>
-  <div class="shell" id="app">
+  <div class="shell">
     <header>
       <h1>TXQR Send</h1>
-      <p>Paste text on this Windows machine, show the animated QR stream, and let your phone reader decode and copy it.</p>
+      <p>Runs in the background. Copy any text, press <kbd>%s</kbd>, and a QR popup appears for your phone reader.</p>
     </header>
-
-    <section class="panel composer">
-      <label>
-        Text to transfer
-        <textarea id="text" placeholder="Paste selected text here…">%s</textarea>
+    <section class="panel">
+      <label>Manual text (optional)
+        <textarea id="text" placeholder="Or paste here to preview without the hotkey…"></textarea>
       </label>
       <div class="row">
-        <label>Chunk size
-          <input id="chunk" type="number" min="20" max="1000" value="%d" />
+        <label>Chunk override (0 = auto)
+          <input id="chunk" type="number" min="0" max="1000" value="0" />
         </label>
         <label>FPS
-          <input id="fps" type="number" min="1" max="20" value="%d" />
+          <input id="fps" type="number" min="1" max="15" value="%d" />
         </label>
         <label>QR size
           <input id="size" type="number" min="200" max="800" value="%d" />
         </label>
       </div>
       <div class="actions">
-        <button id="send" type="button">Show QR stream</button>
-        <button id="paste" class="secondary" type="button">Paste from clipboard</button>
+        <button id="send" type="button">Show QR popup</button>
+        <button id="paste" class="secondary" type="button">Paste clipboard</button>
       </div>
       <div class="error" id="error"></div>
-      <div class="meta" id="hint">Tip: keep the window full-screen and steady while scanning.</div>
-    </section>
-
-    <section class="stage" id="stage">
-      <img id="qr" alt="Animated TXQR stream" />
-      <div class="meta" id="stats"></div>
-      <div class="actions">
-        <button id="back" class="secondary" type="button">Edit text</button>
-      </div>
+      <div class="meta" id="hint">Auto mode picks chunk/FPS/redundancy from paste size for reliable phone scanning.</div>
     </section>
   </div>
   <script>
-    const app = document.getElementById('app');
-    const textEl = document.getElementById('text');
     const errorEl = document.getElementById('error');
-    const stage = document.getElementById('stage');
-    const qr = document.getElementById('qr');
-    const stats = document.getElementById('stats');
+    const textEl = document.getElementById('text');
 
-    async function pasteClipboard() {
+    document.getElementById('paste').onclick = async () => {
       errorEl.textContent = '';
-      try {
-        const value = await navigator.clipboard.readText();
-        textEl.value = value;
-      } catch (err) {
-        errorEl.textContent = 'Clipboard access blocked — paste with Ctrl+V instead.';
-      }
-    }
+      try { textEl.value = await navigator.clipboard.readText(); }
+      catch { errorEl.textContent = 'Clipboard blocked — use Ctrl+V.'; }
+    };
 
-    async function send() {
+    document.getElementById('send').onclick = async () => {
       errorEl.textContent = '';
-      const text = textEl.value;
-      if (!text.trim()) {
-        errorEl.textContent = 'Enter or paste some text first.';
-        return;
-      }
+      const chunk = Number(document.getElementById('chunk').value);
       const body = {
-        text,
-        chunk_len: Number(document.getElementById('chunk').value),
+        text: textEl.value,
+        chunk_len: chunk,
         fps: Number(document.getElementById('fps').value),
         qr_size: Number(document.getElementById('size').value),
-        format: 'gif',
-        redundancy: 2.0
+        auto: !chunk
       };
-      document.getElementById('send').disabled = true;
       try {
         const res = await fetch('/api/encode', {
           method: 'POST',
@@ -219,32 +128,97 @@ const indexHTML = `<!DOCTYPE html>
           body: JSON.stringify(body)
         });
         const data = await res.json();
-        if (!res.ok || data.error) {
-          throw new Error(data.error || ('HTTP ' + res.status));
-        }
-        qr.src = data.gif;
-        stats.innerHTML = '<strong>' + data.bytes + ' bytes</strong> · ' +
-          data.frame_count + ' frames · ' + data.fps + ' fps loop';
-        app.classList.add('sending');
-        stage.classList.add('active');
+        if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+        window.open('/popup?t=' + Date.now(), 'txqr-popup', 'noopener,width=720,height=780');
       } catch (err) {
         errorEl.textContent = err.message || String(err);
-      } finally {
-        document.getElementById('send').disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
+`
+
+const popupHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TXQR</title>
+  <style>
+    html, body {
+      margin: 0; height: 100%%;
+      background: #ffffff;
+      color: #111;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    }
+    body {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      min-height: 100%%;
+    }
+    .stage {
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    img {
+      width: min(640px, 92vw);
+      height: auto;
+      image-rendering: pixelated;
+      background: #fff;
+    }
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 14px 18px;
+      border-top: 1px solid #e6e6e6;
+      background: #f7f7f7;
+      font-size: 0.92rem;
+      color: #444;
+    }
+    .err { color: #b00020; text-align: center; padding: 24px; }
+    kbd {
+      padding: 1px 6px;
+      border: 1px solid #ccc;
+      background: #fff;
+      font: inherit;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="err" id="status">Loading clipboard transfer…</div>
+  </div>
+  <footer>
+    <div id="stats">Hotkey <kbd>%s</kbd></div>
+    <div>Esc closes · point your phone at the code</div>
+  </footer>
+  <script>
+    const stage = document.getElementById('stage');
+    const stats = document.getElementById('stats');
+    async function load() {
+      try {
+        const res = await fetch('/api/latest');
+        const data = await res.json();
+        if (data.error && !data.image) {
+          stage.innerHTML = '<div class="err">' + data.error + '</div>';
+          return;
+        }
+        stage.innerHTML = '<img alt="TXQR stream" src="' + data.image + '" />';
+        const kind = data.static ? 'static QR' : (data.frame_count + ' frames @ ' + data.fps + ' fps');
+        stats.textContent = data.bytes + ' bytes · ' + kind + ' · chunk ' + data.chunk_len;
+      } catch (err) {
+        stage.innerHTML = '<div class="err">' + (err.message || err) + '</div>';
       }
     }
-
-    document.getElementById('paste').addEventListener('click', pasteClipboard);
-    document.getElementById('send').addEventListener('click', send);
-    document.getElementById('back').addEventListener('click', () => {
-      app.classList.remove('sending');
-      stage.classList.remove('active');
-      qr.removeAttribute('src');
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') window.close();
     });
-
-    if (textEl.value.trim()) {
-      send();
-    }
+    load();
   </script>
 </body>
 </html>

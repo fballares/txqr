@@ -1,44 +1,58 @@
 package main
 
 import (
-	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/gif"
-	"image/png"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/divan/txqr"
-	"github.com/divan/txqr/qr"
 )
 
-// SenderServer serves the paste UI and encodes text into animated QR frames.
+// SenderServer serves the background popup UI and encode APIs.
 type SenderServer struct {
-	ChunkLen int
-	FPS      int
-	QRSize   int
-	Initial  string
+	mu sync.RWMutex
+
+	Default txqr.ClipboardProfile
+	Hotkey  string
+
+	// latest transfer prepared for /popup
+	latest *transfer
+}
+
+type transfer struct {
+	Text       string
+	Bytes      int
+	FrameCount int
+	FPS        int
+	ChunkLen   int
+	Redundancy float64
+	Created    time.Time
+	Image      string // data URL (gif or png)
+	Static     bool
+	Error      string
 }
 
 type encodeRequest struct {
-	Text     string  `json:"text"`
-	ChunkLen int     `json:"chunk_len"`
-	FPS      int     `json:"fps"`
-	QRSize   int     `json:"qr_size"`
-	Format   string  `json:"format"` // "gif" or "frames"
+	Text       string  `json:"text"`
+	ChunkLen   int     `json:"chunk_len"`
+	FPS        int     `json:"fps"`
+	QRSize     int     `json:"qr_size"`
 	Redundancy float64 `json:"redundancy"`
+	Auto       bool    `json:"auto"`
 }
 
 type encodeResponse struct {
-	FrameCount int      `json:"frame_count"`
-	FPS        int      `json:"fps"`
-	Bytes      int      `json:"bytes"`
-	GIF        string   `json:"gif,omitempty"`    // data URL
-	Frames     []string `json:"frames,omitempty"` // PNG data URLs
-	Error      string   `json:"error,omitempty"`
+	FrameCount int     `json:"frame_count"`
+	FPS        int     `json:"fps"`
+	Bytes      int     `json:"bytes"`
+	ChunkLen   int     `json:"chunk_len"`
+	Redundancy float64 `json:"redundancy"`
+	Static     bool    `json:"static"`
+	Image      string  `json:"image"`
+	Error      string  `json:"error,omitempty"`
 }
 
 func (s *SenderServer) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +61,32 @@ func (s *SenderServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, indexHTML, htmlEscape(s.Initial), s.ChunkLen, s.FPS, s.QRSize)
+	p := s.Default
+	fmt.Fprintf(w, indexHTML, htmlEscape(s.Hotkey), p.FPS, p.QRSize)
+}
+
+func (s *SenderServer) handlePopup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, popupHTML, htmlEscape(s.Hotkey))
+}
+
+func (s *SenderServer) handleLatest(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.latest == nil {
+		writeJSON(w, http.StatusOK, encodeResponse{Error: "no transfer yet — copy text and press " + s.Hotkey})
+		return
+	}
+	writeJSON(w, http.StatusOK, encodeResponse{
+		FrameCount: s.latest.FrameCount,
+		FPS:        s.latest.FPS,
+		Bytes:      s.latest.Bytes,
+		ChunkLen:   s.latest.ChunkLen,
+		Redundancy: s.latest.Redundancy,
+		Static:     s.latest.Static,
+		Image:      s.latest.Image,
+		Error:      s.latest.Error,
+	})
 }
 
 func (s *SenderServer) handleEncode(w http.ResponseWriter, r *http.Request) {
@@ -55,118 +94,107 @@ func (s *SenderServer) handleEncode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-
 	var req encodeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, encodeResponse{Error: "invalid JSON body"})
 		return
 	}
-
-	text := req.Text
-	if strings.TrimSpace(text) == "" {
-		writeJSON(w, http.StatusBadRequest, encodeResponse{Error: "text is empty"})
-		return
-	}
-
-	chunkLen := req.ChunkLen
-	if chunkLen <= 0 {
-		chunkLen = s.ChunkLen
-	}
-	fps := req.FPS
-	if fps <= 0 {
-		fps = s.FPS
-	}
-	qrSize := req.QRSize
-	if qrSize <= 0 {
-		qrSize = s.QRSize
-	}
-	redundancy := req.Redundancy
-	if redundancy <= 0 {
-		redundancy = 2.0
-	}
-
-	enc := txqr.NewEncoder(chunkLen)
-	enc.SetRedundancyFactor(redundancy)
-	chunks, err := enc.Encode(text)
+	tr, err := s.buildTransfer(req.Text, req)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, encodeResponse{Error: err.Error()})
+		writeJSON(w, http.StatusBadRequest, encodeResponse{Error: err.Error()})
 		return
 	}
+	s.setLatest(tr)
+	writeJSON(w, http.StatusOK, encodeResponse{
+		FrameCount: tr.FrameCount,
+		FPS:        tr.FPS,
+		Bytes:      tr.Bytes,
+		ChunkLen:   tr.ChunkLen,
+		Redundancy: tr.Redundancy,
+		Static:     tr.Static,
+		Image:      tr.Image,
+		Error:      tr.Error,
+	})
+}
 
-	resp := encodeResponse{
-		FrameCount: len(chunks),
-		FPS:        fps,
+func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer, error) {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("clipboard is empty — copy text first")
+	}
+
+	p := s.Default
+	if req.Auto || (req.ChunkLen <= 0 && req.FPS <= 0) {
+		p = txqr.ProfileForPayload(len(text))
+	}
+	if req.ChunkLen > 0 {
+		p.ChunkLen = req.ChunkLen
+	}
+	if req.FPS > 0 {
+		p.FPS = req.FPS
+	}
+	if req.QRSize > 0 {
+		p.QRSize = req.QRSize
+	}
+	if req.Redundancy > 0 {
+		p.Redundancy = req.Redundancy
+	}
+
+	chunks, used, err := encodeTransfer(text, p)
+	if err != nil {
+		return &transfer{Error: err.Error(), Created: time.Now()}, err
+	}
+
+	tr := &transfer{
+		Text:       text,
 		Bytes:      len(text),
+		FrameCount: len(chunks),
+		FPS:        used.FPS,
+		ChunkLen:   used.ChunkLen,
+		Redundancy: used.Redundancy,
+		Created:    time.Now(),
+		Static:     len(chunks) == 1,
 	}
 
-	format := strings.ToLower(req.Format)
-	if format == "" {
-		format = "gif"
-	}
-
-	switch format {
-	case "frames":
-		frames := make([]string, 0, len(chunks))
-		for _, chunk := range chunks {
-			img, err := qr.Encode(chunk, qrSize, qr.Medium)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, encodeResponse{Error: err.Error()})
-				return
-			}
-			dataURL, err := pngDataURL(img)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, encodeResponse{Error: err.Error()})
-				return
-			}
-			frames = append(frames, dataURL)
-		}
-		resp.Frames = frames
-	default:
-		gifBytes, err := animatedGIF(chunks, qrSize, fps)
+	if tr.Static {
+		pngBytes, err := renderPNG(chunks[0], used.QRSize)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, encodeResponse{Error: err.Error()})
-			return
+			return nil, err
 		}
-		resp.GIF = "data:image/gif;base64," + base64.StdEncoding.EncodeToString(gifBytes)
+		tr.Image = dataURL("image/png", pngBytes)
+	} else {
+		gifBytes, err := renderGIF(chunks, used.QRSize, used.FPS)
+		if err != nil {
+			return nil, err
+		}
+		tr.Image = dataURL("image/gif", gifBytes)
 	}
-
-	writeJSON(w, http.StatusOK, resp)
+	return tr, nil
 }
 
-func animatedGIF(chunks []string, qrSize, fps int) ([]byte, error) {
-	out := &gif.GIF{
-		Image: make([]*image.Paletted, len(chunks)),
-		Delay: make([]int, len(chunks)),
-	}
-	delay := 100 / fps
-	if delay < 1 {
-		delay = 1
-	}
-	for i, chunk := range chunks {
-		img, err := qr.Encode(chunk, qrSize, qr.Medium)
-		if err != nil {
-			return nil, fmt.Errorf("QR encode: %w", err)
-		}
-		paletted, ok := img.(*image.Paletted)
-		if !ok {
-			return nil, fmt.Errorf("QR encoder returned non-paletted image")
-		}
-		out.Image[i] = paletted
-		out.Delay[i] = delay
-	}
-	var buf bytes.Buffer
-	if err := gif.EncodeAll(&buf, out); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+func (s *SenderServer) setLatest(tr *transfer) {
+	s.mu.Lock()
+	s.latest = tr
+	s.mu.Unlock()
 }
 
-func pngDataURL(img image.Image) (string, error) {
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return "", err
+func (s *SenderServer) showClipboard() error {
+	text, err := readClipboardText()
+	if err != nil {
+		tr := &transfer{Error: "clipboard read failed: " + err.Error(), Created: time.Now()}
+		s.setLatest(tr)
+		return err
 	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+	tr, err := s.buildTransfer(text, encodeRequest{Auto: true})
+	if err != nil {
+		if tr == nil {
+			tr = &transfer{Error: err.Error(), Created: time.Now()}
+		}
+		s.setLatest(tr)
+		return err
+	}
+	s.setLatest(tr)
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

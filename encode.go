@@ -24,7 +24,8 @@ func NewEncoder(n int) *Encoder {
 // Encode encodes data from reader and splits it into chunks to be
 // futher converted to QR code frames.
 func (e *Encoder) Encode(str string) ([]string, error) {
-	if len(str) < e.chunkLen {
+	// A single QR frame is optimal for short clipboard pastes.
+	if len(str) <= e.chunkLen {
 		return []string{e.frame(0, len(str), []byte(str))}, nil
 	}
 

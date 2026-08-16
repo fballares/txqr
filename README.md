@@ -18,11 +18,21 @@ Reader iOS app in the demo (uses this lib via Gomobile): [https://github.com/div
 Also see `cmd/txqr-tester` app for automated testing of different encoder parameters.
 
 ## Windows text → phone clipboard
-Use `cmd/txqr-send` to paste text on a PC, display a looping animated QR stream, and recover it with a mobile TXQR reader (see `mobile/` for the Gomobile decoder API).
+
+Use `cmd/txqr-send` as a background app:
+
+1. Copy text on Windows  
+2. Press **Ctrl+Shift+Q** (configurable)  
+3. A popup shows a static or animated QR stream  
+4. Your mobile TXQR reader decodes and copies the text  
 
 ```bash
 go run ./cmd/txqr-send
+# Windows GUI build:
+go build -ldflags="-H windowsgui" -o txqr-send.exe ./cmd/txqr-send
 ```
+
+Encoder defaults are auto-tuned for clipboard pastes (`txqr.ProfileForPayload`).
 
 # Licence
 
