@@ -144,26 +144,37 @@ const popupHTML = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TXQR</title>
+  <title>TXQR Overlay</title>
   <style>
     html, body {
       margin: 0; height: 100%%;
       background: #ffffff;
       color: #111;
       font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      user-select: none;
+      overflow: hidden;
     }
     body {
       display: grid;
-      grid-template-rows: 1fr auto;
+      grid-template-rows: auto 1fr auto;
       min-height: 100%%;
     }
+    .banner {
+      padding: 10px 12px;
+      background: #0f1720;
+      color: #e8eef7;
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+    .banner strong { color: #3ecf8e; font-weight: 650; }
     .stage {
       display: grid;
       place-items: center;
-      padding: 24px;
+      padding: 10px 12px 4px;
+      background: #fff;
     }
     img {
-      width: min(640px, 92vw);
+      width: min(360px, 88vw);
       height: auto;
       image-rendering: pixelated;
       background: #fff;
@@ -171,46 +182,94 @@ const popupHTML = `<!DOCTYPE html>
     footer {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
+      gap: 8px;
       flex-wrap: wrap;
-      padding: 14px 18px;
+      padding: 8px 12px 10px;
       border-top: 1px solid #e6e6e6;
       background: #f7f7f7;
-      font-size: 0.92rem;
+      font-size: 0.78rem;
       color: #444;
     }
-    .err { color: #b00020; text-align: center; padding: 24px; }
+    .err { color: #b00020; text-align: center; padding: 18px; font-size: 0.9rem; }
     kbd {
-      padding: 1px 6px;
+      padding: 1px 5px;
       border: 1px solid #ccc;
       background: #fff;
       font: inherit;
-      font-size: 0.9em;
+      font-size: 0.85em;
     }
   </style>
 </head>
 <body>
+  <div class="banner">
+    <strong>Looping continuously</strong> — start scanning anytime.
+    Missed frames are OK. Drag this window to where your phone sits.
+  </div>
   <div class="stage" id="stage">
-    <div class="err" id="status">Loading clipboard transfer…</div>
+    <div class="err" id="status">Preparing QR stream…</div>
   </div>
   <footer>
     <div id="stats">Hotkey <kbd>%s</kbd></div>
-    <div>Esc closes · point your phone at the code</div>
+    <div id="loop">Esc closes</div>
   </footer>
   <script>
     const stage = document.getElementById('stage');
     const stats = document.getElementById('stats');
+    const loopEl = document.getElementById('loop');
+    let frames = [];
+    let idx = 0;
+    let loops = 0;
+    let timer = null;
+
+    function showStatic(src) {
+      stage.innerHTML = '<img alt="TXQR" src="' + src + '" />';
+      loopEl.textContent = 'Static QR · Esc closes';
+    }
+
+    function tick() {
+      if (!frames.length) return;
+      const img = document.getElementById('qr');
+      if (img) img.src = frames[idx];
+      idx += 1;
+      if (idx >= frames.length) {
+        idx = 0;
+        loops += 1;
+      }
+      loopEl.textContent = 'Loop ' + (loops + 1) + ' · frame ' + (idx + 1) + '/' + frames.length;
+    }
+
+    function showAnimated(list, fps) {
+      frames = list;
+      idx = 0;
+      loops = 0;
+      stage.innerHTML = '<img id="qr" alt="TXQR stream" src="' + frames[0] + '" />';
+      const ms = Math.max(80, Math.round(1000 / (fps || 6)));
+      if (timer) clearInterval(timer);
+      timer = setInterval(tick, ms);
+      tick();
+    }
+
     async function load() {
       try {
-        const res = await fetch('/api/latest');
+        const res = await fetch('/api/latest?format=frames');
         const data = await res.json();
-        if (data.error && !data.image) {
+        if (data.error && !data.image && !(data.frames && data.frames.length)) {
           stage.innerHTML = '<div class="err">' + data.error + '</div>';
           return;
         }
-        stage.innerHTML = '<img alt="TXQR stream" src="' + data.image + '" />';
-        const kind = data.static ? 'static QR' : (data.frame_count + ' frames @ ' + data.fps + ' fps');
-        stats.textContent = data.bytes + ' bytes · ' + kind + ' · chunk ' + data.chunk_len;
+        const kind = data.static
+          ? 'static QR'
+          : (data.frame_count + ' frames @ ' + data.fps + ' fps · continuous loop');
+        stats.textContent = data.bytes + ' bytes · ' + kind;
+        if (data.static || !data.frames || data.frames.length <= 1) {
+          showStatic(data.image || (data.frames && data.frames[0]));
+        } else if (data.frames && data.frames.length) {
+          showAnimated(data.frames, data.fps);
+        } else {
+          // GIF fallback still loops forever in the browser.
+          stage.innerHTML = '<img alt="TXQR stream" src="' + data.image + '" />';
+          loopEl.textContent = 'GIF looping · Esc closes';
+        }
       } catch (err) {
         stage.innerHTML = '<div class="err">' + (err.message || err) + '</div>';
       }

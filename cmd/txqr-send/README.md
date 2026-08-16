@@ -13,8 +13,11 @@ Background Windows sender for clipboard → animated QR → phone reader.
    - **Click the tray icon**, or  
    - Press **`Ctrl+Shift+Q`** (configurable), or  
    - Right-click tray → **Show QR from clipboard**
-4. A popup window shows a static QR (short text) or a looping animated TXQR stream.
-5. Point your mobile TXQR reader at the window; when decode completes, copy the text on the phone.
+4. A **movable overlay** opens (bottom-right by default, drag anywhere) and **loops continuously**
+5. Point your mobile TXQR reader whenever ready — you do not need to catch the start
+6. When decode completes, copy/save on the phone; Esc closes the overlay
+
+See [AIRGAP.md](./AIRGAP.md) for start/end protocol details, phone limits, and multi-QR notes.
 
 ### Tray menu
 - **Show QR from clipboard** — same as clicking the icon  

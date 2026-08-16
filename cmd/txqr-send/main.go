@@ -78,8 +78,9 @@ func main() {
 
 	openPopup := func() {
 		url := fmt.Sprintf("%s/popup?t=%d", baseURL, time.Now().UnixNano())
-		if err := openBrowser(url); err != nil {
-			log.Printf("open popup: %v (open %s manually)", err, url)
+		// Compact overlay, bottom-right / always-on-top on Windows when possible.
+		if err := openOverlayWindow(url, 420, 540); err != nil {
+			log.Printf("open overlay: %v (open %s manually)", err, url)
 		}
 	}
 

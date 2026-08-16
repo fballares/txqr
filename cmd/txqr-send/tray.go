@@ -29,14 +29,14 @@ func runTray(app *trayApp) {
 func (app *trayApp) onReady() {
 	systray.SetIcon(trayIcon)
 	systray.SetTitle("TXQR")
-	systray.SetTooltip(fmt.Sprintf("TXQR Send — copy text, click or press %s", app.hotkey))
+	systray.SetTooltip(fmt.Sprintf("TXQR Send — copy text, click tray or press %s (overlay loops until done)", app.hotkey))
 
 	// Left-click tray icon = generate QR from clipboard
 	systray.SetOnTapped(func() {
 		app.onShowQR()
 	})
 
-	mShow := systray.AddMenuItem("Show QR from clipboard", "Encode clipboard text and open the QR popup")
+	mShow := systray.AddMenuItem("Show QR from clipboard", "Encode clipboard and open movable overlay")
 	mShow.SetIcon(trayIcon)
 	mUI := systray.AddMenuItem("Open settings…", "Open the local settings page")
 	systray.AddSeparator()

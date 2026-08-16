@@ -30,7 +30,8 @@ type transfer struct {
 	ChunkLen   int
 	Redundancy float64
 	Created    time.Time
-	Image      string // data URL (gif or png)
+	Image      string   // data URL (gif or png) — always present
+	Frames     []string // PNG data URLs for JS looping (omitted when too many)
 	Static     bool
 	Error      string
 }
@@ -45,14 +46,16 @@ type encodeRequest struct {
 }
 
 type encodeResponse struct {
-	FrameCount int     `json:"frame_count"`
-	FPS        int     `json:"fps"`
-	Bytes      int     `json:"bytes"`
-	ChunkLen   int     `json:"chunk_len"`
-	Redundancy float64 `json:"redundancy"`
-	Static     bool    `json:"static"`
-	Image      string  `json:"image"`
-	Error      string  `json:"error,omitempty"`
+	FrameCount int      `json:"frame_count"`
+	FPS        int      `json:"fps"`
+	Bytes      int      `json:"bytes"`
+	ChunkLen   int      `json:"chunk_len"`
+	Redundancy float64  `json:"redundancy"`
+	Static     bool     `json:"static"`
+	Image      string   `json:"image,omitempty"`
+	Frames     []string `json:"frames,omitempty"`
+	Looping    bool     `json:"looping"`
+	Error      string   `json:"error,omitempty"`
 }
 
 func (s *SenderServer) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +80,7 @@ func (s *SenderServer) handleLatest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, encodeResponse{Error: "no transfer yet — copy text and press " + s.Hotkey})
 		return
 	}
-	writeJSON(w, http.StatusOK, encodeResponse{
+	resp := encodeResponse{
 		FrameCount: s.latest.FrameCount,
 		FPS:        s.latest.FPS,
 		Bytes:      s.latest.Bytes,
@@ -85,8 +88,14 @@ func (s *SenderServer) handleLatest(w http.ResponseWriter, r *http.Request) {
 		Redundancy: s.latest.Redundancy,
 		Static:     s.latest.Static,
 		Image:      s.latest.Image,
+		Looping:    !s.latest.Static,
 		Error:      s.latest.Error,
-	})
+	}
+	// Prefer discrete frames for reliable infinite JS looping when small enough.
+	if r.URL.Query().Get("format") == "frames" && len(s.latest.Frames) > 0 {
+		resp.Frames = s.latest.Frames
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *SenderServer) handleEncode(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +122,8 @@ func (s *SenderServer) handleEncode(w http.ResponseWriter, r *http.Request) {
 		Redundancy: tr.Redundancy,
 		Static:     tr.Static,
 		Image:      tr.Image,
+		Frames:     tr.Frames,
+		Looping:    !tr.Static,
 		Error:      tr.Error,
 	})
 }
@@ -162,12 +173,28 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 			return nil, err
 		}
 		tr.Image = dataURL("image/png", pngBytes)
+		tr.Frames = []string{tr.Image}
 	} else {
 		gifBytes, err := renderGIF(chunks, used.QRSize, used.FPS)
 		if err != nil {
 			return nil, err
 		}
 		tr.Image = dataURL("image/gif", gifBytes)
+
+		// Keep discrete frames for JS infinite looping when the set is small
+		// enough to ship over localhost JSON (typical clipboard sizes).
+		const maxJSFrames = 120
+		if len(chunks) <= maxJSFrames {
+			frames := make([]string, 0, len(chunks))
+			for _, chunk := range chunks {
+				pngBytes, err := renderPNG(chunk, used.QRSize)
+				if err != nil {
+					return nil, err
+				}
+				frames = append(frames, dataURL("image/png", pngBytes))
+			}
+			tr.Frames = frames
+		}
 	}
 	return tr, nil
 }
