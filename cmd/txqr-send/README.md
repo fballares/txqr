@@ -17,11 +17,17 @@ Background Windows sender for clipboard → animated QR → phone reader.
 5. Point your mobile TXQR reader whenever ready — you do not need to catch the start
 6. When decode completes, copy/save on the phone; Esc closes the overlay
 
-## Multi-QR (concurrent)
+## Multi-QR (auto)
 
-The overlay can show **2 QR codes at once** (configurable `-streams 2`). Both come from the same fountain encode; the iPhone app reads every QR in the camera frame and feeds them together into one decoder.
+By default (`-streams 0`) Windows **auto-selects**:
 
-See `ios/TXQRReader` for the SwiftUI multi-detect reader.
+| Situation | Display |
+|-----------|---------|
+| Fits in one QR / tiny paste | **1** QR |
+| Short loop (&lt; ~2s) or &lt; ~2KB | **1** QR (dual not worth it) |
+| Larger text with a longer loop | **2** concurrent QRs |
+
+Force with `-streams 1` or `-streams 2`. The iPhone app auto-detects whichever layout is showing.
 
 ### Tray menu
 - **Show QR from clipboard** — same as clicking the icon  

@@ -6,14 +6,23 @@ import Txqr
 #endif
 
 /// Owns the TXQR fountain decoder and exposes UI-friendly progress.
-/// Vision multi-detect feeds every QR payload from one camera frame via DecodeBatch.
+/// Dynamically accepts 1 or many QR payloads per camera frame — no fixed stream count.
 @MainActor
 final class TransferSession: ObservableObject {
+    enum DetectedLayout: String {
+        case idle = "Waiting"
+        case single = "Single QR"
+        case dual = "Dual QR"
+        case multi = "Multi QR"
+    }
+
     @Published var progress: Int = 0
     @Published var statusText: String = "Ready — aim at the overlay"
     @Published var isComplete: Bool = false
     @Published var recoveredText: String = ""
     @Published var lastCodesInFrame: Int = 0
+    @Published var peakConcurrent: Int = 0
+    @Published var detectedLayout: DetectedLayout = .idle
     @Published var preview: String = ""
 
     private var acceptedTotal: Int = 0
@@ -23,14 +32,19 @@ final class TransferSession: ObservableObject {
 #endif
 
     func start() {
-        statusText = "Scanning for TXQR frames…"
+        statusText = "Scanning — auto-detects 1 or 2 QR codes"
     }
 
     func stop() {}
 
-    /// Called on the main actor with all QR payloads seen in one camera frame.
+    /// Called with every QR payload Vision found in one camera frame.
     func ingest(codes: [String]) {
         lastCodesInFrame = codes.count
+        if codes.count > peakConcurrent {
+            peakConcurrent = codes.count
+        }
+        updateLayout(codes.count)
+
         guard !isComplete, !codes.isEmpty else { return }
 
         let joined = codes.joined(separator: "\n")
@@ -41,7 +55,8 @@ final class TransferSession: ObservableObject {
             acceptedTotal += accepted
             progress = Int(decoder.progress())
             let unique = Int(decoder.uniqueFrames())
-            statusText = "Unique frames \(unique) · last frame saw \(codes.count) QR"
+            let layout = detectedLayout.rawValue
+            statusText = "\(layout) · \(unique) unique frames · +\(accepted) this tick"
             if decoder.isCompleted() {
                 finish(text: decoder.data())
             }
@@ -49,10 +64,26 @@ final class TransferSession: ObservableObject {
             statusText = "Saw \(codes.count) QR — waiting for TXQR frames"
         }
 #else
-        // Framework not linked yet: keep UI usable while developing layout.
         statusText = "Txqr framework missing — run make ios-framework on a Mac"
         _ = joined
 #endif
+    }
+
+    private func updateLayout(_ count: Int) {
+        switch count {
+        case 0:
+            break
+        case 1:
+            // Don't downgrade from dual if we already locked onto two —
+            // brief misses of one code are common while panning.
+            if detectedLayout != .dual && detectedLayout != .multi {
+                detectedLayout = .single
+            }
+        case 2:
+            detectedLayout = .dual
+        default:
+            detectedLayout = .multi
+        }
     }
 
     private func finish(text: String) {
@@ -60,7 +91,8 @@ final class TransferSession: ObservableObject {
         progress = 100
         recoveredText = text
         preview = text.count > 400 ? String(text.prefix(400)) + "…" : text
-        statusText = "Complete · \(text.count) bytes"
+        let mode = peakConcurrent >= 2 ? "dual/multi peak \(peakConcurrent)" : "single"
+        statusText = "Complete · \(text.count) bytes · \(mode)"
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
@@ -79,6 +111,8 @@ final class TransferSession: ObservableObject {
         preview = ""
         acceptedTotal = 0
         lastCodesInFrame = 0
-        statusText = "Scanning for TXQR frames…"
+        peakConcurrent = 0
+        detectedLayout = .idle
+        statusText = "Scanning — auto-detects 1 or 2 QR codes"
     }
 }

@@ -27,7 +27,8 @@ Use `cmd/txqr-send` on Windows and `ios/TXQRReader` on iPhone:
 4. iPhone TXQRReader multi-detects all visible QRs and reconstructs the payload  
 
 ```bash
-go run ./cmd/txqr-send -streams 2
+go run ./cmd/txqr-send          # auto 1 vs 2 QR by benefit
+go run ./cmd/txqr-send -streams 2   # force dual
 # Windows GUI build:
 go build -ldflags="-H windowsgui" -o txqr-send.exe ./cmd/txqr-send
 

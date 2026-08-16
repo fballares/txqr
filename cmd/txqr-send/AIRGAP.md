@@ -52,11 +52,11 @@ You do **not** need to catch the beginning of the animation.
 
 ## Multi-QR concurrent streams
 
-The Windows overlay can show **two (or more) QR codes** at once from the same fountain encode. An iPhone reader using Vision multi-detect feeds every payload into `DecodeBatch`.
+Windows **auto-selects** 1 vs 2 QR codes so dual only appears when it should finish faster (larger payloads / longer loops). The iPhone reader dynamically accepts whatever it sees.
 
-- Wire format unchanged — no special start/end frames
-- Practical sweet spot: **2 streams** on one overlay
-- Stock Camera app is not enough — use `ios/TXQRReader`
+- Wire format unchanged
+- Override: `-streams 1` or `-streams 2`
+- Sweet spot when dual is chosen: **2 streams**
 
 ## Phone scanning limits
 

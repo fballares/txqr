@@ -24,9 +24,7 @@ struct ContentView: View {
                 Text("TXQR Reader")
                     .font(.title2.weight(.bold))
                 Spacer()
-                Label("\(session.lastCodesInFrame) QR", systemImage: "qrcode.viewfinder")
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                layoutBadge
             }
 
             ProgressView(value: Double(session.progress), total: 100)
@@ -65,12 +63,24 @@ struct ContentView: View {
                     }
                 }
             } else {
-                Text("Point at the Windows overlay. Multiple QR codes in one view are decoded together. You can start mid-loop.")
+                Text("Windows auto-picks single or dual QR for speed. This app reads whatever is on screen — 1 or 2 — in the same scan loop.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(16)
         .background(.ultraThinMaterial)
+    }
+
+    private var layoutBadge: some View {
+        let dual = session.detectedLayout == .dual || session.detectedLayout == .multi
+        return Label(
+            "\(session.lastCodesInFrame) now · peak \(session.peakConcurrent)",
+            systemImage: dual ? "square.grid.2x2" : "qrcode.viewfinder"
+        )
+        .font(.caption.monospacedDigit())
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(dual ? Color.green.opacity(0.25) : Color.white.opacity(0.08), in: Capsule())
     }
 }

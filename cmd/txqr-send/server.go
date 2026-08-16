@@ -17,7 +17,8 @@ type SenderServer struct {
 
 	Default txqr.ClipboardProfile
 	Hotkey  string
-	Streams int // concurrent QR slots in the overlay (1–4)
+	Streams int // 0 = auto (pick 1 vs 2 by benefit); 1–4 = force
+
 
 	// latest transfer prepared for /popup
 	latest *transfer
@@ -74,10 +75,14 @@ func (s *SenderServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *SenderServer) handlePopup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	streams := s.Streams
-	if streams < 1 {
-		streams = 2
+	streams := 1
+	s.mu.RLock()
+	if s.latest != nil && s.latest.Streams > 0 {
+		streams = s.latest.Streams
+	} else if s.Streams > 0 {
+		streams = s.Streams
 	}
+	s.mu.RUnlock()
 	fmt.Fprintf(w, popupHTML, htmlEscape(s.Hotkey), streams, streams)
 }
 
@@ -164,16 +169,24 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 	if streams <= 0 {
 		streams = s.Streams
 	}
-	if streams <= 0 {
-		streams = txqr.SuggestedStreams(len(text))
-	}
-	if streams > 4 {
-		streams = 4
-	}
 
 	chunks, used, err := encodeTransfer(text, p)
 	if err != nil {
 		return &transfer{Error: err.Error(), Created: time.Now()}, err
+	}
+
+	// Auto mode (0): dual QR only when it should finish faster for this encode.
+	if streams <= 0 {
+		streams = txqr.SuggestedStreamsForTransfer(len(text), len(chunks), used.FPS)
+	}
+	if streams < 1 {
+		streams = 1
+	}
+	if streams > 4 {
+		streams = 4
+	}
+	if len(chunks) == 1 {
+		streams = 1
 	}
 
 	tr := &transfer{
@@ -186,9 +199,6 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 		Streams:    streams,
 		Created:    time.Now(),
 		Static:     len(chunks) == 1,
-	}
-	if tr.Static {
-		tr.Streams = 1
 	}
 
 	if tr.Static {
@@ -205,7 +215,12 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 		}
 		tr.Image = dataURL("image/gif", gifBytes)
 
-		const maxJSFrames = 120
+		// Dual overlay needs discrete frames. Cap size so localhost JSON stays sane;
+		// if the set is huge, fall back to a single GIF stream.
+		maxJSFrames := 250
+		if streams >= 2 {
+			maxJSFrames = 360
+		}
 		if len(chunks) <= maxJSFrames {
 			frames := make([]string, 0, len(chunks))
 			for _, chunk := range chunks {
@@ -216,6 +231,9 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 				frames = append(frames, dataURL("image/png", pngBytes))
 			}
 			tr.Frames = frames
+		} else if streams >= 2 {
+			tr.Streams = 1
+			streams = 1
 		}
 	}
 	return tr, nil

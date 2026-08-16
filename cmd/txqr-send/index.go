@@ -217,7 +217,7 @@ const popupHTML = `<!DOCTYPE html>
     <div class="err" id="status">Preparing QR stream…</div>
   </div>
   <footer>
-    <div id="stats">Hotkey <kbd>%s</kbd> · up to %d streams</div>
+    <div id="stats">Hotkey <kbd>%s</kbd> · auto 1↔%d QR</div>
     <div id="loop">Esc closes</div>
   </footer>
   <script>
@@ -240,7 +240,7 @@ const popupHTML = `<!DOCTYPE html>
     function showStatic(src) {
       stage.classList.remove('multi');
       stage.innerHTML = '<img alt="TXQR" src="' + src + '" />';
-      loopEl.textContent = 'Static QR · Esc closes';
+      loopEl.textContent = 'Single QR · Esc closes';
     }
 
     function paint() {
@@ -252,15 +252,17 @@ const popupHTML = `<!DOCTYPE html>
         img.src = frames[idx];
       }
       tickN += 1;
-      if (tickN %% frames.length === 0) loops += 1;
-      loopEl.textContent = streams + ' QR · loop ' + (loops + 1) + ' · tick ' + tickN;
+      if (frames.length && tickN %% frames.length === 0) loops += 1;
+      const mode = streams > 1 ? (streams + ' concurrent QRs') : 'single QR';
+      loopEl.textContent = mode + ' · loop ' + (loops + 1);
     }
 
     function showAnimated(list, fps, streamCount) {
       frames = list;
       tickN = 0;
       loops = 0;
-      streams = Math.max(1, Math.min(streamCount || defaultStreams || 2, 4));
+      // Trust server auto-selection; never show dual for a 1-frame set.
+      streams = Math.max(1, Math.min(streamCount || 1, 4));
       if (frames.length < 2) streams = 1;
       stage.classList.toggle('multi', streams > 1);
       let html = '';
@@ -282,10 +284,10 @@ const popupHTML = `<!DOCTYPE html>
           stage.innerHTML = '<div class="err">' + data.error + '</div>';
           return;
         }
-        const sc = data.streams || defaultStreams || 1;
+        const sc = data.streams || 1;
         const kind = data.static
-          ? 'static QR'
-          : (data.frame_count + ' frames @ ' + data.fps + ' fps · ' + sc + ' concurrent');
+          ? 'single static QR'
+          : (data.frame_count + ' frames @ ' + data.fps + ' fps · ' + (sc > 1 ? (sc + ' concurrent') : 'single'));
         stats.textContent = data.bytes + ' bytes · ' + kind;
         if (data.static || !data.frames || data.frames.length <= 1) {
           showStatic(data.image || (data.frames && data.frames[0]));

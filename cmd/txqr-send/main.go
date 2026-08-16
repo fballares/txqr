@@ -27,7 +27,7 @@ func main() {
 	fps := flag.Int("fps", defaults.FPS, "Override animation FPS")
 	size := flag.Int("size", defaults.QRSize, "QR image size in pixels")
 	redundancy := flag.Float64("redundancy", defaults.Redundancy, "Fountain-code redundancy factor")
-	streams := flag.Int("streams", 2, "Concurrent QR codes in the overlay (1–4); iPhone reads them together")
+	streams := flag.Int("streams", 0, "QR streams: 0=auto (1 vs 2 by size/speed benefit), 1–4=force")
 	background := flag.Bool("background", true, "Stay resident with tray icon and hotkey")
 	tray := flag.Bool("tray", true, "Show a system tray / notification-area icon")
 	text := flag.String("text", "", "Encode this text once and show popup (then exit unless -background)")
@@ -46,8 +46,8 @@ func main() {
 	}
 
 	streamCount := *streams
-	if streamCount < 1 {
-		streamCount = 1
+	if streamCount < 0 {
+		streamCount = 0
 	}
 	if streamCount > 4 {
 		streamCount = 4
@@ -56,7 +56,7 @@ func main() {
 	srv := &SenderServer{
 		Default: profile,
 		Hotkey:  *hotkeySpec,
-		Streams: streamCount,
+		Streams: streamCount, // 0 = auto per transfer
 	}
 
 	ln, err := net.Listen("tcp", *addr)
@@ -88,8 +88,14 @@ func main() {
 
 	openPopup := func() {
 		url := fmt.Sprintf("%s/popup?t=%d", baseURL, time.Now().UnixNano())
-		// Compact overlay, bottom-right / always-on-top on Windows when possible.
-		if err := openOverlayWindow(url, 640, 520); err != nil {
+		streams := 1
+		srv.mu.RLock()
+		if srv.latest != nil && srv.latest.Streams > 0 {
+			streams = srv.latest.Streams
+		}
+		srv.mu.RUnlock()
+		w, h := txqr.OverlaySize(streams)
+		if err := openOverlayWindow(url, w, h); err != nil {
 			log.Printf("open overlay: %v (open %s manually)", err, url)
 		}
 	}
@@ -102,7 +108,11 @@ func main() {
 			tr := srv.latest
 			srv.mu.RUnlock()
 			if tr != nil && tr.Error == "" {
-				log.Printf("showing QR: %d bytes, %d frames @ %d fps", tr.Bytes, tr.FrameCount, tr.FPS)
+				mode := "single QR"
+				if tr.Streams >= 2 {
+					mode = fmt.Sprintf("%d concurrent QRs", tr.Streams)
+				}
+				log.Printf("showing %s: %d bytes, %d frames @ %d fps", mode, tr.Bytes, tr.FrameCount, tr.FPS)
 			}
 		}
 		if !*noBrowser {
@@ -128,8 +138,12 @@ func main() {
 
 	log.Printf("TXQR sender running at %s", baseURL)
 	log.Printf("Workflow: copy text → click tray icon or press %s → scan with phone", *hotkeySpec)
-	log.Printf("Defaults: chunk=%d fps=%d size=%d redundancy=%.2f streams=%d",
-		profile.ChunkLen, profile.FPS, profile.QRSize, profile.Redundancy, streamCount)
+	streamMode := "auto (1 vs 2 by benefit)"
+	if streamCount > 0 {
+		streamMode = fmt.Sprintf("forced %d", streamCount)
+	}
+	log.Printf("Defaults: chunk=%d fps=%d size=%d redundancy=%.2f streams=%s",
+		profile.ChunkLen, profile.FPS, profile.QRSize, profile.Redundancy, streamMode)
 
 	if *background {
 		go runHotkeyLoop(*hotkeySpec, triggerFromClipboard)
