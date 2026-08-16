@@ -19,20 +19,23 @@ Also see `cmd/txqr-tester` app for automated testing of different encoder parame
 
 ## Windows text → phone clipboard
 
-Use `cmd/txqr-send` as a background app with a tray icon:
+Use `cmd/txqr-send` on Windows and `ios/TXQRReader` on iPhone:
 
-1. Copy text on Windows  
-2. **Click the tray icon** or press **Ctrl+Shift+Q**  
-3. A popup shows a static or animated QR stream  
-4. Your mobile TXQR reader decodes and copies the text  
+1. Run `txqr-send` (tray icon, multi-QR overlay)  
+2. Copy text → click tray or **Ctrl+Shift+Q**  
+3. Overlay loops **1–2 QR codes** (drag to your phone stand)  
+4. iPhone TXQRReader multi-detects all visible QRs and reconstructs the payload  
 
 ```bash
-go run ./cmd/txqr-send
-# Windows GUI build (no console window):
+go run ./cmd/txqr-send -streams 2
+# Windows GUI build:
 go build -ldflags="-H windowsgui" -o txqr-send.exe ./cmd/txqr-send
+
+# On a Mac, build the Go framework for the iOS app:
+make ios-framework
 ```
 
-Encoder defaults are auto-tuned for clipboard pastes (`txqr.ProfileForPayload`).
+See `cmd/txqr-send/AIRGAP.md` and `ios/TXQRReader/README.md`.
 
 # Licence
 

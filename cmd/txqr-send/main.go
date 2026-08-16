@@ -27,6 +27,7 @@ func main() {
 	fps := flag.Int("fps", defaults.FPS, "Override animation FPS")
 	size := flag.Int("size", defaults.QRSize, "QR image size in pixels")
 	redundancy := flag.Float64("redundancy", defaults.Redundancy, "Fountain-code redundancy factor")
+	streams := flag.Int("streams", 2, "Concurrent QR codes in the overlay (1–4); iPhone reads them together")
 	background := flag.Bool("background", true, "Stay resident with tray icon and hotkey")
 	tray := flag.Bool("tray", true, "Show a system tray / notification-area icon")
 	text := flag.String("text", "", "Encode this text once and show popup (then exit unless -background)")
@@ -44,9 +45,18 @@ func main() {
 		log.Printf("clipboard init: %v (clipboard reads may fail)", err)
 	}
 
+	streamCount := *streams
+	if streamCount < 1 {
+		streamCount = 1
+	}
+	if streamCount > 4 {
+		streamCount = 4
+	}
+
 	srv := &SenderServer{
 		Default: profile,
 		Hotkey:  *hotkeySpec,
+		Streams: streamCount,
 	}
 
 	ln, err := net.Listen("tcp", *addr)
@@ -79,7 +89,7 @@ func main() {
 	openPopup := func() {
 		url := fmt.Sprintf("%s/popup?t=%d", baseURL, time.Now().UnixNano())
 		// Compact overlay, bottom-right / always-on-top on Windows when possible.
-		if err := openOverlayWindow(url, 420, 540); err != nil {
+		if err := openOverlayWindow(url, 640, 520); err != nil {
 			log.Printf("open overlay: %v (open %s manually)", err, url)
 		}
 	}
@@ -118,8 +128,8 @@ func main() {
 
 	log.Printf("TXQR sender running at %s", baseURL)
 	log.Printf("Workflow: copy text → click tray icon or press %s → scan with phone", *hotkeySpec)
-	log.Printf("Defaults: chunk=%d fps=%d size=%d redundancy=%.2f (auto-tuned per paste size)",
-		profile.ChunkLen, profile.FPS, profile.QRSize, profile.Redundancy)
+	log.Printf("Defaults: chunk=%d fps=%d size=%d redundancy=%.2f streams=%d",
+		profile.ChunkLen, profile.FPS, profile.QRSize, profile.Redundancy, streamCount)
 
 	if *background {
 		go runHotkeyLoop(*hotkeySpec, triggerFromClipboard)

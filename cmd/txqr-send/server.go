@@ -17,6 +17,7 @@ type SenderServer struct {
 
 	Default txqr.ClipboardProfile
 	Hotkey  string
+	Streams int // concurrent QR slots in the overlay (1–4)
 
 	// latest transfer prepared for /popup
 	latest *transfer
@@ -29,6 +30,7 @@ type transfer struct {
 	FPS        int
 	ChunkLen   int
 	Redundancy float64
+	Streams    int
 	Created    time.Time
 	Image      string   // data URL (gif or png) — always present
 	Frames     []string // PNG data URLs for JS looping (omitted when too many)
@@ -42,6 +44,7 @@ type encodeRequest struct {
 	FPS        int     `json:"fps"`
 	QRSize     int     `json:"qr_size"`
 	Redundancy float64 `json:"redundancy"`
+	Streams    int     `json:"streams"`
 	Auto       bool    `json:"auto"`
 }
 
@@ -51,6 +54,7 @@ type encodeResponse struct {
 	Bytes      int      `json:"bytes"`
 	ChunkLen   int      `json:"chunk_len"`
 	Redundancy float64  `json:"redundancy"`
+	Streams    int      `json:"streams"`
 	Static     bool     `json:"static"`
 	Image      string   `json:"image,omitempty"`
 	Frames     []string `json:"frames,omitempty"`
@@ -70,7 +74,11 @@ func (s *SenderServer) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *SenderServer) handlePopup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, popupHTML, htmlEscape(s.Hotkey))
+	streams := s.Streams
+	if streams < 1 {
+		streams = 2
+	}
+	fmt.Fprintf(w, popupHTML, htmlEscape(s.Hotkey), streams, streams)
 }
 
 func (s *SenderServer) handleLatest(w http.ResponseWriter, r *http.Request) {
@@ -86,12 +94,12 @@ func (s *SenderServer) handleLatest(w http.ResponseWriter, r *http.Request) {
 		Bytes:      s.latest.Bytes,
 		ChunkLen:   s.latest.ChunkLen,
 		Redundancy: s.latest.Redundancy,
+		Streams:    s.latest.Streams,
 		Static:     s.latest.Static,
 		Image:      s.latest.Image,
 		Looping:    !s.latest.Static,
 		Error:      s.latest.Error,
 	}
-	// Prefer discrete frames for reliable infinite JS looping when small enough.
 	if r.URL.Query().Get("format") == "frames" && len(s.latest.Frames) > 0 {
 		resp.Frames = s.latest.Frames
 	}
@@ -120,6 +128,7 @@ func (s *SenderServer) handleEncode(w http.ResponseWriter, r *http.Request) {
 		Bytes:      tr.Bytes,
 		ChunkLen:   tr.ChunkLen,
 		Redundancy: tr.Redundancy,
+		Streams:    tr.Streams,
 		Static:     tr.Static,
 		Image:      tr.Image,
 		Frames:     tr.Frames,
@@ -151,6 +160,17 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 		p.Redundancy = req.Redundancy
 	}
 
+	streams := req.Streams
+	if streams <= 0 {
+		streams = s.Streams
+	}
+	if streams <= 0 {
+		streams = txqr.SuggestedStreams(len(text))
+	}
+	if streams > 4 {
+		streams = 4
+	}
+
 	chunks, used, err := encodeTransfer(text, p)
 	if err != nil {
 		return &transfer{Error: err.Error(), Created: time.Now()}, err
@@ -163,8 +183,12 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 		FPS:        used.FPS,
 		ChunkLen:   used.ChunkLen,
 		Redundancy: used.Redundancy,
+		Streams:    streams,
 		Created:    time.Now(),
 		Static:     len(chunks) == 1,
+	}
+	if tr.Static {
+		tr.Streams = 1
 	}
 
 	if tr.Static {
@@ -181,8 +205,6 @@ func (s *SenderServer) buildTransfer(text string, req encodeRequest) (*transfer,
 		}
 		tr.Image = dataURL("image/gif", gifBytes)
 
-		// Keep discrete frames for JS infinite looping when the set is small
-		// enough to ship over localhost JSON (typical clipboard sizes).
 		const maxJSFrames = 120
 		if len(chunks) <= maxJSFrames {
 			frames := make([]string, 0, len(chunks))

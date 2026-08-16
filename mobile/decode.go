@@ -61,6 +61,42 @@ func (d *Decoder) Decode(data string) error {
 	return nil
 }
 
+// DecodeBatch ingests multiple QR payloads from one camera frame.
+// Pass payloads joined with newlines (gomobile-friendly). Invalid or
+// non-TXQR values are skipped so Vision multi-detect noise is safe.
+// Returns how many payloads were accepted into the fountain decoder.
+func (d *Decoder) DecodeBatch(joined string) int {
+	if d.IsCompleted() || joined == "" {
+		return 0
+	}
+	accepted := 0
+	start := 0
+	for i := 0; i <= len(joined); i++ {
+		if i < len(joined) && joined[i] != '\n' {
+			continue
+		}
+		part := joined[start:i]
+		start = i + 1
+		if part == "" {
+			continue
+		}
+		if err := d.Decode(part); err != nil {
+			// Non-TXQR codes in the scene are ignored.
+			continue
+		}
+		accepted++
+		if d.IsCompleted() {
+			break
+		}
+	}
+	return accepted
+}
+
+// UniqueFrames returns how many distinct TXQR frame headers have been seen.
+func (d *Decoder) UniqueFrames() int {
+	return d.UniqueCount()
+}
+
 // Speed returns avg reading speed.
 func (d *Decoder) Speed() string {
 	return fmt.Sprintf("%s/s", byten.Size(int64(d.speed)))

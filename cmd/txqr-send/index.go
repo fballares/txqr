@@ -169,15 +169,23 @@ const popupHTML = `<!DOCTYPE html>
     .banner strong { color: #3ecf8e; font-weight: 650; }
     .stage {
       display: grid;
+      gap: 8px;
       place-items: center;
-      padding: 10px 12px 4px;
+      align-content: center;
+      padding: 8px 10px 4px;
       background: #fff;
     }
-    img {
-      width: min(360px, 88vw);
+    .stage.multi {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .stage img {
+      width: min(280px, 42vw);
       height: auto;
       image-rendering: pixelated;
       background: #fff;
+    }
+    .stage:not(.multi) img {
+      width: min(360px, 88vw);
     }
     footer {
       display: flex;
@@ -190,7 +198,7 @@ const popupHTML = `<!DOCTYPE html>
       font-size: 0.78rem;
       color: #444;
     }
-    .err { color: #b00020; text-align: center; padding: 18px; font-size: 0.9rem; }
+    .err { color: #b00020; text-align: center; padding: 18px; font-size: 0.9rem; grid-column: 1 / -1; }
     kbd {
       padding: 1px 5px;
       border: 1px solid #ccc;
@@ -202,51 +210,68 @@ const popupHTML = `<!DOCTYPE html>
 </head>
 <body>
   <div class="banner">
-    <strong>Looping continuously</strong> — start scanning anytime.
-    Missed frames are OK. Drag this window to where your phone sits.
+    <strong>Looping continuously</strong> — multi-QR when needed.
+    iPhone can read both at once. Drag this window to your phone stand.
   </div>
   <div class="stage" id="stage">
     <div class="err" id="status">Preparing QR stream…</div>
   </div>
   <footer>
-    <div id="stats">Hotkey <kbd>%s</kbd></div>
+    <div id="stats">Hotkey <kbd>%s</kbd> · up to %d streams</div>
     <div id="loop">Esc closes</div>
   </footer>
   <script>
     const stage = document.getElementById('stage');
     const stats = document.getElementById('stats');
     const loopEl = document.getElementById('loop');
+    const defaultStreams = %d;
     let frames = [];
-    let idx = 0;
+    let tickN = 0;
     let loops = 0;
+    let streams = 1;
     let timer = null;
 
+    function frameIndex(tick, stream, streamCount, n) {
+      if (n <= 0) return 0;
+      const offset = Math.floor((n * stream) / streamCount);
+      return (tick + offset) %% n;
+    }
+
     function showStatic(src) {
+      stage.classList.remove('multi');
       stage.innerHTML = '<img alt="TXQR" src="' + src + '" />';
       loopEl.textContent = 'Static QR · Esc closes';
     }
 
-    function tick() {
+    function paint() {
       if (!frames.length) return;
-      const img = document.getElementById('qr');
-      if (img) img.src = frames[idx];
-      idx += 1;
-      if (idx >= frames.length) {
-        idx = 0;
-        loops += 1;
+      for (let s = 0; s < streams; s++) {
+        const img = document.getElementById('qr' + s);
+        if (!img) continue;
+        const idx = frameIndex(tickN, s, streams, frames.length);
+        img.src = frames[idx];
       }
-      loopEl.textContent = 'Loop ' + (loops + 1) + ' · frame ' + (idx + 1) + '/' + frames.length;
+      tickN += 1;
+      if (tickN %% frames.length === 0) loops += 1;
+      loopEl.textContent = streams + ' QR · loop ' + (loops + 1) + ' · tick ' + tickN;
     }
 
-    function showAnimated(list, fps) {
+    function showAnimated(list, fps, streamCount) {
       frames = list;
-      idx = 0;
+      tickN = 0;
       loops = 0;
-      stage.innerHTML = '<img id="qr" alt="TXQR stream" src="' + frames[0] + '" />';
+      streams = Math.max(1, Math.min(streamCount || defaultStreams || 2, 4));
+      if (frames.length < 2) streams = 1;
+      stage.classList.toggle('multi', streams > 1);
+      let html = '';
+      for (let s = 0; s < streams; s++) {
+        html += '<img id="qr' + s + '" alt="TXQR stream ' + (s + 1) + '" src="' + frames[frameIndex(0, s, streams, frames.length)] + '" />';
+      }
+      stage.innerHTML = html;
       const ms = Math.max(80, Math.round(1000 / (fps || 6)));
       if (timer) clearInterval(timer);
-      timer = setInterval(tick, ms);
-      tick();
+      timer = setInterval(paint, ms);
+      paint();
     }
 
     async function load() {
@@ -257,16 +282,17 @@ const popupHTML = `<!DOCTYPE html>
           stage.innerHTML = '<div class="err">' + data.error + '</div>';
           return;
         }
+        const sc = data.streams || defaultStreams || 1;
         const kind = data.static
           ? 'static QR'
-          : (data.frame_count + ' frames @ ' + data.fps + ' fps · continuous loop');
+          : (data.frame_count + ' frames @ ' + data.fps + ' fps · ' + sc + ' concurrent');
         stats.textContent = data.bytes + ' bytes · ' + kind;
         if (data.static || !data.frames || data.frames.length <= 1) {
           showStatic(data.image || (data.frames && data.frames[0]));
         } else if (data.frames && data.frames.length) {
-          showAnimated(data.frames, data.fps);
+          showAnimated(data.frames, data.fps, sc);
         } else {
-          // GIF fallback still loops forever in the browser.
+          stage.classList.remove('multi');
           stage.innerHTML = '<img alt="TXQR stream" src="' + data.image + '" />';
           loopEl.textContent = 'GIF looping · Esc closes';
         }

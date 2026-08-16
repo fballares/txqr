@@ -137,6 +137,11 @@ func (d *Decoder) Total() int {
 	return d.total
 }
 
+// UniqueCount returns how many distinct frame headers have been observed.
+func (d *Decoder) UniqueCount() int {
+	return len(d.cache)
+}
+
 // IsCompleted reports whether the read was completed successfully or not.
 func (d *Decoder) IsCompleted() bool {
 	return d.completed

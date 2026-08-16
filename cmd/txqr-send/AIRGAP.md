@@ -50,6 +50,14 @@ You do **not** need to catch the beginning of the animation.
 - **Drag the window** anywhere convenient (desk corner, beside keyboard, etc.)
 - Park the phone on a stand aimed at that spot for hands-free scanning
 
+## Multi-QR concurrent streams
+
+The Windows overlay can show **two (or more) QR codes** at once from the same fountain encode. An iPhone reader using Vision multi-detect feeds every payload into `DecodeBatch`.
+
+- Wire format unchanged — no special start/end frames
+- Practical sweet spot: **2 streams** on one overlay
+- Stock Camera app is not enough — use `ios/TXQRReader`
+
 ## Phone scanning limits
 
 | Factor | Practical limit |
