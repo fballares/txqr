@@ -79,7 +79,10 @@ final class TransferSession: ObservableObject {
                 statusText = "\(side) QR · \(unique) unique · +\(accepted)"
             }
             if decoder.isCompleted() {
-                finish(text: decoder.data())
+                let verified = decoder.isVerified()
+                finish(text: decoder.data(), verified: verified, crc: decoder.expectedCRCHex())
+            } else if !decoder.integrityError().isEmpty {
+                statusText = "Integrity retry — \(decoder.integrityError())"
             }
         } else if !codes.isEmpty {
             statusText = "Saw \(codes.count) QR — waiting for TXQR frames"
@@ -90,13 +93,18 @@ final class TransferSession: ObservableObject {
 #endif
     }
 
-    private func finish(text: String) {
+    private func finish(text: String, verified: Bool, crc: String) {
         isComplete = true
         progress = 100
         recoveredText = text
         preview = text.count > 400 ? String(text.prefix(400)) + "…" : text
         let mode = peakConcurrent >= 2 ? "LEFT+RIGHT peak \(peakConcurrent)" : "single"
-        statusText = "Complete · \(text.count) bytes · \(mode)"
+        if verified {
+            let crcPart = crc.isEmpty ? "verified" : "CRC \(crc) verified"
+            statusText = "Complete · \(text.count) bytes · \(crcPart) · \(mode)"
+        } else {
+            statusText = "Complete · \(text.count) bytes · \(mode)"
+        }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 

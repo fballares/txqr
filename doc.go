@@ -25,21 +25,31 @@ No error correction is implemented, as QR code layer already has one.
 
 Header
 
-    blockCode/chunkLen/total|<data>
+    blockCode/chunkLen/total/crc32|<data>
 
 	blockCode identifies the fountain-code block, chunkLen is the
 	encoder chunk size, and total is the full payload length in bytes.
-	Numeric fields are printed in decimal.
+	crc32 is the IEEE CRC-32 of the entire original payload (8 hex digits).
+	Numeric fields are printed in decimal; CRC is lowercase hex.
+
+	The receiver verifies CRC after fountain reconstruction so the
+	phone can confirm it got exactly what Windows sent.
+
+Integrity
+
+	Every frame carries crc32 = CRC-32/IEEE of the full original payload.
+	QR Reed-Solomon and fountain codes handle optical noise/erasures;
+	the payload CRC is the end-to-end check that reconstructed bytes match.
 
 For example:
 
  First chunk:
 
-    0/5/11|hello
+    0/5/11/1a2b3c4d|hello
 
  Second chunk:
 
-    1/5/11|world!
+    1/5/11/1a2b3c4d|world!
 
 
 */

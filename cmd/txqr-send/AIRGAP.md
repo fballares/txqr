@@ -50,7 +50,9 @@ You do **not** need to catch the beginning of the animation.
 - **Drag the window** anywhere convenient (desk corner, beside keyboard, etc.)
 - Park the phone on a stand aimed at that spot for hands-free scanning
 
-## Multi-QR concurrent streams
+## Integrity (CRC)
+
+Every QR frame advertises a **CRC-32** of the full payload. After the iPhone reconstructs the data with fountain codes, it recomputes the CRC and only marks the transfer complete when it matches. That catches silent corruption that QR ECC alone would not surface as an end-to-end failure.
 
 Windows **auto-selects** 1 vs 2 QR codes so dual only appears when it should finish faster (larger payloads / longer loops). Dual layout is always **LEFT | RIGHT**; the iPhone sorts Vision hits left→right and merges both.
 

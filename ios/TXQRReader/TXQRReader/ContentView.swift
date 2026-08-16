@@ -41,9 +41,15 @@ struct ContentView: View {
 
             if session.isComplete {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Transfer complete")
-                        .font(.headline)
-                        .foregroundStyle(.green)
+                    HStack {
+                        Text("Transfer complete")
+                            .font(.headline)
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Label("CRC verified", systemImage: "checkmark.seal.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                    }
                     Text(session.preview)
                         .font(.system(.footnote, design: .monospaced))
                         .lineLimit(6)
